@@ -384,3 +384,71 @@ class HealthScore(Base):
     )
 
     run: Mapped["AnalysisRun"] = relationship("AnalysisRun", back_populates="health_score")
+
+
+# ---------------------------------------------------------------------------
+# analysis_jobs & analysis_job_stages (S15)
+# ---------------------------------------------------------------------------
+
+class AnalysisJob(Base):
+    """
+    One row per user job submission. Tracks queue status, current stage execution,
+    cache status, error messages, and linked analysis_runs ID upon completion.
+    
+    Status states:
+      queued | cloning | parsing | analyzing | graph-building | scoring | embedding | completed | partial | failed
+    """
+    __tablename__ = "analysis_jobs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_uuid)
+    repo_url: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    commit_sha: Mapped[Optional[str]] = mapped_column(String(256), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued", index=True)
+    current_stage: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
+    progress: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cache_hit: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    run_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("analysis_runs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    stages_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Detailed list of stage records as JSON
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now_utc
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now_utc, onupdate=_now_utc
+    )
+    started_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    run: Mapped[Optional["AnalysisRun"]] = relationship("AnalysisRun")
+    stages: Mapped[List["AnalysisJobStage"]] = relationship(
+        "AnalysisJobStage", back_populates="job", cascade="all, delete-orphan"
+    )
+
+
+class AnalysisJobStage(Base):
+    """
+    One row per stage execution within a job for fine-grained stage history persistence.
+    """
+    __tablename__ = "analysis_job_stages"
+    __table_args__ = (
+        UniqueConstraint("job_id", "stage_name", name="uq_job_stage_name"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_uuid)
+    job_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("analysis_jobs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    stage_name: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")  # pending | running | completed | skipped | failed
+    detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    job: Mapped["AnalysisJob"] = relationship("AnalysisJob", back_populates="stages")
+

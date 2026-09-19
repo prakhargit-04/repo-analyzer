@@ -39,7 +39,10 @@ from .models import (
     GraphEdge,
     Finding,
     HealthScore,
+    AnalysisJob,
+    AnalysisJobStage,
 )
+
 
 
 # ---------------------------------------------------------------------------
@@ -435,3 +438,248 @@ def get_all_runs_for_repo(session: Session, repo_url: str) -> List[dict]:
         .order_by(AnalysisRun.created_at.desc())
     ).scalars().all()
     return [_run_to_dict(session, r) for r in runs]
+
+
+# ---------------------------------------------------------------------------
+# Job Management (S15)
+# ---------------------------------------------------------------------------
+
+STAGE_PROGRESS_MAP = {
+    "queued": 0,
+    "cloning": 15,
+    "parsing": 30,
+    "analyzing": 50,
+    "graph-building": 75,
+    "scoring": 85,
+    "embedding": 95,
+    "completed": 100,
+    "partial": 100,
+    "failed": 100,
+}
+
+ALL_STAGES = [
+    "cloning", "parsing", "analyzing", "graph-building", "scoring", "embedding"
+]
+
+
+def create_job(session: Session, repo_url: str, commit_sha: Optional[str] = None) -> AnalysisJob:
+    """Create a new AnalysisJob and its stage tracking rows in 'queued' status."""
+    job = AnalysisJob(
+        repo_url=repo_url,
+        commit_sha=commit_sha,
+        status="queued",
+        current_stage="queued",
+        progress=0,
+    )
+    session.add(job)
+    session.flush()
+
+    # Pre-populate stage rows
+    for stage_name in ALL_STAGES:
+        st = AnalysisJobStage(
+            job_id=job.id,
+            stage_name=stage_name,
+            status="pending",
+        )
+        session.add(st)
+    session.flush()
+
+    _sync_job_stages_json(session, job)
+    return job
+
+
+def get_job_model(session: Session, job_id: str) -> Optional[AnalysisJob]:
+    """Fetch AnalysisJob ORM model instance by ID."""
+    return session.execute(
+        select(AnalysisJob).where(AnalysisJob.id == job_id)
+    ).scalar_one_or_none()
+
+
+def get_job_dict(session: Session, job_id: str) -> Optional[dict]:
+    """Fetch job by ID and format as a structured dict for API responses."""
+    job = get_job_model(session, job_id)
+    if not job:
+        return None
+    return _job_to_dict(session, job)
+
+
+def get_active_job_for_repo(session: Session, repo_url: str, commit_sha: Optional[str] = None) -> Optional[AnalysisJob]:
+    """Return any active (queued or in-progress) job for a repo/commit if one exists."""
+    stmt = (
+        select(AnalysisJob)
+        .where(AnalysisJob.repo_url == repo_url)
+        .where(AnalysisJob.status.in_(["queued", "cloning", "parsing", "analyzing", "graph-building", "scoring", "embedding"]))
+    )
+    if commit_sha:
+        stmt = stmt.where(AnalysisJob.commit_sha == commit_sha)
+    stmt = stmt.order_by(AnalysisJob.created_at.desc())
+    return session.execute(stmt).scalars().first()
+
+
+
+def find_completed_run_by_sha(session: Session, repo_url: str, commit_sha: str) -> Optional[dict]:
+    """Find a completed analysis run matching repo_url and commit_sha."""
+    run = session.execute(
+        select(AnalysisRun)
+        .join(AnalysisRun.snapshot)
+        .join(Snapshot.repository)
+        .where(Repository.repo_url == repo_url)
+        .where(Snapshot.commit_sha == commit_sha)
+        .where(AnalysisRun.status.in_(["complete", "partial"]))
+        .order_by(AnalysisRun.created_at.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    if run is None:
+        return None
+    return _run_to_dict(session, run)
+
+
+def update_job_stage(
+    session: Session,
+    job_id: str,
+    stage_name: str,
+    stage_status: str,  # running | completed | skipped | failed
+    detail: Optional[str] = None,
+    progress: Optional[int] = None,
+) -> None:
+    """Update job current stage and stage status row."""
+    job = get_job_model(session, job_id)
+    if not job:
+        return
+
+    now = datetime.now(timezone.utc)
+    if job.started_at is None:
+        job.started_at = now
+
+    job.current_stage = stage_name
+    if stage_status in ("running", "completed", "skipped", "failed"):
+        if stage_name in ("cloning", "parsing", "analyzing", "graph-building", "scoring", "embedding"):
+            job.status = stage_name
+
+    prog = progress if progress is not None else STAGE_PROGRESS_MAP.get(stage_name, job.progress)
+    job.progress = max(job.progress, prog)
+    job.updated_at = now
+
+    # Update individual stage record
+    stage_row = session.execute(
+        select(AnalysisJobStage).where(
+            AnalysisJobStage.job_id == job_id,
+            AnalysisJobStage.stage_name == stage_name,
+        )
+    ).scalar_one_or_none()
+
+    if stage_row:
+        stage_row.status = stage_status
+        if detail is not None:
+            stage_row.detail = detail
+        if stage_status == "running" and stage_row.started_at is None:
+            stage_row.started_at = now
+        elif stage_status in ("completed", "skipped", "failed"):
+            if stage_row.started_at is None:
+                stage_row.started_at = now
+            stage_row.completed_at = now
+
+    _sync_job_stages_json(session, job)
+    session.flush()
+
+
+def complete_job(
+    session: Session,
+    job_id: str,
+    run_id: str,
+    status: str = "completed",
+    cache_hit: bool = False,
+) -> None:
+    """Mark job as completed (or partial) linked to run_id."""
+    job = get_job_model(session, job_id)
+    if not job:
+        return
+    now = datetime.now(timezone.utc)
+    job.status = status
+    job.current_stage = status
+    job.progress = 100
+    job.run_id = run_id
+    job.cache_hit = cache_hit
+    job.completed_at = now
+    job.updated_at = now
+
+    # Mark remaining stages completed or skipped
+    for st in job.stages:
+        if st.status in ("pending", "running"):
+            st.status = "completed" if not cache_hit else "completed"
+            if st.started_at is None:
+                st.started_at = now
+            st.completed_at = now
+
+    _sync_job_stages_json(session, job)
+    session.flush()
+
+
+def fail_job(session: Session, job_id: str, error_message: str) -> None:
+    """Mark job as failed with error message."""
+    job = get_job_model(session, job_id)
+    if not job:
+        return
+    now = datetime.now(timezone.utc)
+    job.status = "failed"
+    job.error_message = error_message
+    job.completed_at = now
+    job.updated_at = now
+
+    # Mark current stage failed
+    if job.current_stage:
+        stage_row = session.execute(
+            select(AnalysisJobStage).where(
+                AnalysisJobStage.job_id == job_id,
+                AnalysisJobStage.stage_name == job.current_stage,
+            )
+        ).scalar_one_or_none()
+        if stage_row:
+            stage_row.status = "failed"
+            stage_row.detail = error_message
+            stage_row.completed_at = now
+
+    _sync_job_stages_json(session, job)
+    session.flush()
+
+
+def _sync_job_stages_json(session: Session, job: AnalysisJob) -> None:
+    """Serialize stages list into stages_json on the AnalysisJob model."""
+    stages = session.execute(
+        select(AnalysisJobStage)
+        .where(AnalysisJobStage.job_id == job.id)
+        .order_by(AnalysisJobStage.id)
+    ).scalars().all()
+
+    stages_list = [
+        {
+            "stage_name": s.stage_name,
+            "status": s.status,
+            "detail": s.detail,
+            "started_at": s.started_at.isoformat() if s.started_at else None,
+            "completed_at": s.completed_at.isoformat() if s.completed_at else None,
+        }
+        for s in stages
+    ]
+    job.stages_json = json.dumps(stages_list, sort_keys=True)
+
+
+def _job_to_dict(session: Session, job: AnalysisJob) -> dict:
+    """Format job object to standard dictionary."""
+    stages_data = _uj(job.stages_json) or []
+    return {
+        "job_id": job.id,
+        "repo_url": job.repo_url,
+        "commit_sha": job.commit_sha,
+        "status": job.status,
+        "current_stage": job.current_stage,
+        "progress": job.progress,
+        "cache_hit": job.cache_hit,
+        "error_message": job.error_message,
+        "run_id": job.run_id,
+        "stages": stages_data,
+        "created_at": job.created_at.isoformat() if job.created_at else None,
+        "started_at": job.started_at.isoformat() if job.started_at else None,
+        "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+    }
+

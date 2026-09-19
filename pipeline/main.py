@@ -14,6 +14,8 @@ import sys
 import shutil
 import tempfile
 from datetime import datetime, timezone
+from typing import Callable, Optional
+
 
 sys.path.insert(0, os.path.dirname(__file__))
 from clone import clone_repository
@@ -80,9 +82,22 @@ def save_cache_atomic(cache_path: str, result: dict) -> None:
         raise
 
 
-def run_pipeline(repo_url: str | None, local_path: str | None, commit_sha: str | None, cache_dir: str) -> dict:
+def run_pipeline(
+    repo_url: str | None,
+    local_path: str | None,
+    commit_sha: str | None,
+    cache_dir: str,
+    stage_callback: Callable[[str, str, Optional[str]], None] | None = None,
+) -> dict:
     cleanup_dir = None
     is_fresh_clone = False
+
+    def notify(stage: str, status: str, detail: str | None = None):
+        if stage_callback:
+            try:
+                stage_callback(stage, status, detail)
+            except Exception as cb_exc:
+                print(f"[stage callback warning] {stage} ({status}) failed: {cb_exc}", file=sys.stderr)
 
     if local_path:
         if not os.path.exists(local_path):
@@ -97,9 +112,11 @@ def run_pipeline(repo_url: str | None, local_path: str | None, commit_sha: str |
         raise ValueError("Either repo_url or local_path must be provided")
 
     try:
+        notify("cloning", "running")
         if repo_url:
             resolved_sha = clone_repository(repo_url, repo_root, commit_sha)
             is_fresh_clone = True
+        notify("cloning", "completed")
 
         snapshot_id = resolve_snapshot_id(repo_root, is_fresh_clone, resolved_sha)
         versioned_key = build_cache_key(snapshot_id)
@@ -110,13 +127,24 @@ def run_pipeline(repo_url: str | None, local_path: str | None, commit_sha: str |
         cached = load_cache(cache_path)
         if cached is not None:
             print(f"[cache hit] {cache_path}", file=sys.stderr)
+            notify("parsing", "completed", "Loaded from file cache")
+            notify("analyzing", "completed", "Loaded from file cache")
+            notify("graph-building", "completed", "Loaded from file cache")
+            notify("scoring", "completed", "Loaded from file cache")
+            notify("embedding", "skipped", "Skipped until S20")
             return cached
 
+        notify("parsing", "running")
         parse_results = parse_repository(repo_root)
         parse_results.sort(key=lambda r: r.file)
         py_files_rel = [r.file for r in parse_results if not r.parse_error]
+        notify("parsing", "completed", f"{len(parse_results)} files parsed")
 
+        notify("analyzing", "running")
         analysis = analyze_repository(repo_root, py_files_rel)
+        notify("analyzing", "completed")
+
+        notify("graph-building", "running")
         g = build_graph(parse_results, static_analysis=analysis)
         summary = graph_summary(g)
 
@@ -138,12 +166,17 @@ def run_pipeline(repo_url: str | None, local_path: str | None, commit_sha: str |
             )
         )
         graph_data = {"nodes": nodes, "edges": edges}
+        notify("graph-building", "completed", f"{len(nodes)} nodes, {len(edges)} edges")
 
+        notify("scoring", "running")
         health = compute_health_score(analysis)
         parse_errors = sorted(
             [{"file": r.file, "error": r.parse_error} for r in parse_results if r.parse_error],
             key=lambda pe: pe["file"]
         )
+        notify("scoring", "completed", f"Status: {health['status']}")
+
+        notify("embedding", "skipped", "Skipped until S20")
 
         result = {
             "schema_version": SCHEMA_VERSION,
@@ -180,6 +213,7 @@ def run_pipeline(repo_url: str | None, local_path: str | None, commit_sha: str |
     finally:
         if cleanup_dir and os.path.exists(cleanup_dir):
             shutil.rmtree(cleanup_dir, ignore_errors=True)
+
 
 
 def main():

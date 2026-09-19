@@ -22,6 +22,41 @@ def is_safe_repo_url(url: str) -> bool:
     )
 
 
+def is_remote_repo_url(url: str) -> bool:
+    """Validate that URL is a remote Git repository URL (rejects local file paths for API)."""
+    url_clean = url.strip()
+    if not url_clean or url_clean.startswith("-"):
+        return False
+    return url_clean.startswith(("https://", "http://", "git@", "git://"))
+
+
+def resolve_remote_sha(repo_url: str) -> str | None:
+    """Resolve HEAD commit SHA of a remote repository using git ls-remote without cloning."""
+    if not is_remote_repo_url(repo_url):
+        return None
+
+    cmd = [
+        "git",
+        "-c", "core.hooksPath=/dev/null",
+        "-c", "protocol.ext.allow=never",
+        "ls-remote",
+        "--quiet",
+        "--",
+        repo_url,
+        "HEAD",
+    ]
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if res.returncode == 0 and res.stdout:
+            parts = res.stdout.strip().split()
+            if parts and HEX_SHA_PATTERN.match(parts[0]):
+                return parts[0]
+    except Exception:
+        pass
+    return None
+
+
+
 def clone_repository(repo_url: str, dest_dir: str, commit_sha: str | None = None) -> str:
     """Clones repo_url into dest_dir safely. If commit_sha is given, checks it out.
     Returns the resolved commit SHA actually checked out (for cache-keying)."""
