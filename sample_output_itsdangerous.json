@@ -1,0 +1,194 @@
+{
+  "repository": "/tmp/itsdangerous_test",
+  "commit_sha": "672971d66a2ef9f85151e53283113f33d642dabd",
+  "cache_snapshot_id": "content-sha256:11dd2c81746c7719f2b50d4cf8fd1ff25ae45c32a398e6ddec7584cfba4139f5",
+  "cache_schema_version": "v3",
+  "analyzer_version": "0.2.0",
+  "cache_key_basis": "content_hash (local path -- git HEAD alone is not trusted because working tree may have uncommitted changes)",
+  "analyzed_at_utc": "2026-08-26T10:21:00.034061+00:00",
+  "files_analyzed": 15,
+  "parse_errors": [],
+  "static_analysis": {
+    "scope_policy": "production_code_only",
+    "production_files_analyzed": 9,
+    "test_files_excluded": 6,
+    "complexity": {
+      "status": "success",
+      "results": [
+        {
+          "file": "src/itsdangerous/signer.py",
+          "function": "_lazy_sha1",
+          "line": 40,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "src/itsdangerous/signer.py",
+          "function": "_make_keys_list",
+          "line": 67,
+          "cyclomatic_complexity": 3,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "src/itsdangerous/serializer.py",
+          "function": "is_text_serializer",
+          "line": 33,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "src/itsdangerous/encoding.py",
+          "function": "want_bytes",
+          "line": 11,
+          "cyclomatic_complexity": 2,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "src/itsdangerous/encoding.py",
+          "function": "base64_encode",
+          "line": 20,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "src/itsdangerous/encoding.py",
+          "function": "base64_decode",
+          "line": 28,
+          "cyclomatic_complexity": 2,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "src/itsdangerous/encoding.py",
+          "function": "int_to_bytes",
+          "line": 49,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "src/itsdangerous/encoding.py",
+          "function": "bytes_to_int",
+          "line": 53,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        }
+      ]
+    },
+    "maintainability": {
+      "status": "success",
+      "results": [
+        {
+          "file": "src/itsdangerous/signer.py",
+          "maintainability_index": 61.41,
+          "provenance": "radon:6.0.1:mi_visit"
+        },
+        {
+          "file": "src/itsdangerous/url_safe.py",
+          "maintainability_index": 77.07,
+          "provenance": "radon:6.0.1:mi_visit"
+        },
+        {
+          "file": "src/itsdangerous/__init__.py",
+          "maintainability_index": 100.0,
+          "provenance": "radon:6.0.1:mi_visit"
+        },
+        {
+          "file": "src/itsdangerous/_json.py",
+          "maintainability_index": 100.0,
+          "provenance": "radon:6.0.1:mi_visit"
+        },
+        {
+          "file": "src/itsdangerous/serializer.py",
+          "maintainability_index": 58.05,
+          "provenance": "radon:6.0.1:mi_visit"
+        },
+        {
+          "file": "src/itsdangerous/exc.py",
+          "maintainability_index": 80.03,
+          "provenance": "radon:6.0.1:mi_visit"
+        },
+        {
+          "file": "src/itsdangerous/timed.py",
+          "maintainability_index": 63.69,
+          "provenance": "radon:6.0.1:mi_visit"
+        },
+        {
+          "file": "src/itsdangerous/encoding.py",
+          "maintainability_index": 80.93,
+          "provenance": "radon:6.0.1:mi_visit"
+        },
+        {
+          "file": "docs/conf.py",
+          "maintainability_index": 100.0,
+          "provenance": "radon:6.0.1:mi_visit"
+        }
+      ]
+    },
+    "security": {
+      "status": "success",
+      "results": [
+        {
+          "file": "src/itsdangerous/signer.py",
+          "line": 45,
+          "issue_text": "Use of weak SHA1 hash for security. Consider usedforsecurity=False",
+          "severity": "HIGH",
+          "confidence": "HIGH",
+          "test_id": "B324",
+          "provenance": "bandit:1.9.4"
+        },
+        {
+          "file": "src/itsdangerous/timed.py",
+          "line": 114,
+          "issue_text": "Try, Except, Pass detected.",
+          "severity": "LOW",
+          "confidence": "HIGH",
+          "test_id": "B110",
+          "provenance": "bandit:1.9.4"
+        }
+      ]
+    }
+  },
+  "knowledge_graph_summary": {
+    "total_nodes": 350,
+    "total_edges": 601,
+    "call_edges_total": 337,
+    "call_edges_by_confidence": {
+      "high_confidence": 18,
+      "low_confidence": 33,
+      "flagged": 286
+    },
+    "call_edges_resolved_pct": 15.1,
+    "resolution_caveat": "high_confidence/low_confidence are name-matching heuristics, not verified Python scope resolution -- see graph_builder.py docstring."
+  },
+  "health_score": {
+    "composite_health_score": 87.95,
+    "status": "complete",
+    "sub_scores": {
+      "complexity": 100.0,
+      "maintainability": 80.13,
+      "security": 83.0
+    },
+    "component_statuses": {
+      "complexity": "success",
+      "maintainability": "success",
+      "security": "success"
+    },
+    "missing_components": [],
+    "weights_used": {
+      "complexity": 0.35,
+      "maintainability": 0.35,
+      "security": 0.3
+    },
+    "weights_renormalized": false,
+    "formula": "weighted average of available sub-scores; weights renormalized to sum to 1 if any component is missing (never treated as 0 or 100)",
+    "scope_policy": "production_code_only",
+    "note": "Call-graph resolution confidence is reported separately (graph_builder.graph_summary) and intentionally NOT blended into this score -- it measures analysis coverage, not code quality. 'status' reflects whether EVERY component fully succeeded, not merely whether a numeric score could be computed -- a 'partial' component can still contribute a number without the overall result being 'complete'."
+  }
+}

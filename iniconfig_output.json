@@ -1,0 +1,3109 @@
+{
+  "repository": "https://github.com/pytest-dev/iniconfig",
+  "commit_sha": "00e7d87c7353b1ffecc4cd55f19acfffedd5233e",
+  "cache_snapshot_id": "00e7d87c7353b1ffecc4cd55f19acfffedd5233e",
+  "cache_schema_version": "v3",
+  "analyzer_version": "0.2.0",
+  "cache_key_basis": "git_sha (fresh clone, trusted)",
+  "analyzed_at_utc": "2026-09-19T10:18:10.402639+00:00",
+  "files_analyzed": 5,
+  "parse_errors": [],
+  "static_analysis": {
+    "scope_policy": "production_code_only",
+    "production_files_analyzed": 3,
+    "test_files_excluded": 2,
+    "complexity": {
+      "status": "success",
+      "results": [
+        {
+          "file": "src\\iniconfig\\_parse.py",
+          "function": "parse_ini_data",
+          "line": 16,
+          "cyclomatic_complexity": 7,
+          "rank": "B",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "src\\iniconfig\\_parse.py",
+          "function": "parse_lines",
+          "line": 64,
+          "cyclomatic_complexity": 12,
+          "rank": "C",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "src\\iniconfig\\_parse.py",
+          "function": "_parseline",
+          "line": 102,
+          "cyclomatic_complexity": 15,
+          "rank": "C",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "src\\iniconfig\\_parse.py",
+          "function": "iscommentline",
+          "line": 161,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        }
+      ]
+    },
+    "maintainability": {
+      "status": "success",
+      "results": [
+        {
+          "file": "src\\iniconfig\\exceptions.py",
+          "maintainability_index": 69.2,
+          "provenance": "radon:6.0.1:mi_visit"
+        },
+        {
+          "file": "src\\iniconfig\\_parse.py",
+          "maintainability_index": 56.9,
+          "provenance": "radon:6.0.1:mi_visit"
+        },
+        {
+          "file": "src\\iniconfig\\__init__.py",
+          "maintainability_index": 58.91,
+          "provenance": "radon:6.0.1:mi_visit"
+        }
+      ]
+    },
+    "security": {
+      "status": "success",
+      "results": [
+        {
+          "file": "src\\iniconfig\\_parse.py",
+          "line": 58,
+          "issue_text": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+          "severity": "LOW",
+          "confidence": "HIGH",
+          "test_id": "B101",
+          "provenance": "bandit:1.9.4"
+        }
+      ]
+    }
+  },
+  "knowledge_graph_summary": {
+    "total_nodes": 147,
+    "total_edges": 236,
+    "call_edges_total": 142,
+    "call_edges_by_confidence": {
+      "high_confidence": 10,
+      "low_confidence": 2,
+      "flagged": 130
+    },
+    "call_edges_resolved_pct": 8.5,
+    "resolution_caveat": "high_confidence/low_confidence are name-matching heuristics, not verified Python scope resolution -- see graph_builder.py docstring."
+  },
+  "knowledge_graph": {
+    "nodes": [
+      {
+        "id": "src\\iniconfig\\exceptions.py",
+        "type": "file",
+        "provenance": "filesystem-walk"
+      },
+      {
+        "id": "src\\iniconfig\\exceptions.py::ParseError:4",
+        "type": "class",
+        "name": "ParseError",
+        "file": "src\\iniconfig\\exceptions.py",
+        "start_line": 4,
+        "end_line": 16,
+        "bases": [
+          "Exception"
+        ],
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\exceptions.py::ParseError.__init__:9",
+        "type": "function",
+        "name": "__init__",
+        "file": "src\\iniconfig\\exceptions.py",
+        "start_line": 9,
+        "end_line": 13,
+        "class_owner": "ParseError",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\exceptions.py::ParseError.__str__:15",
+        "type": "function",
+        "name": "__str__",
+        "file": "src\\iniconfig\\exceptions.py",
+        "start_line": 15,
+        "end_line": 16,
+        "class_owner": "ParseError",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "import::typing.Final",
+        "type": "import_target",
+        "name": "typing.Final",
+        "provenance": "external/unresolved"
+      },
+      {
+        "id": "src\\iniconfig\\_parse.py",
+        "type": "file",
+        "provenance": "filesystem-walk"
+      },
+      {
+        "id": "src\\iniconfig\\_parse.py::ParsedLine:9",
+        "type": "class",
+        "name": "ParsedLine",
+        "file": "src\\iniconfig\\_parse.py",
+        "start_line": 9,
+        "end_line": 13,
+        "bases": [
+          "NamedTuple"
+        ],
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\_parse.py::parse_ini_data:16",
+        "type": "function",
+        "name": "parse_ini_data",
+        "file": "src\\iniconfig\\_parse.py",
+        "start_line": 16,
+        "end_line": 61,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\_parse.py::parse_lines:64",
+        "type": "function",
+        "name": "parse_lines",
+        "file": "src\\iniconfig\\_parse.py",
+        "start_line": 64,
+        "end_line": 99,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\_parse.py::_parseline:102",
+        "type": "function",
+        "name": "_parseline",
+        "file": "src\\iniconfig\\_parse.py",
+        "start_line": 102,
+        "end_line": 158,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\_parse.py::iscommentline:161",
+        "type": "function",
+        "name": "iscommentline",
+        "file": "src\\iniconfig\\_parse.py",
+        "start_line": 161,
+        "end_line": 163,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "import::collections.abc.Mapping",
+        "type": "import_target",
+        "name": "collections.abc.Mapping",
+        "provenance": "external/unresolved"
+      },
+      {
+        "id": "import::typing.NamedTuple",
+        "type": "import_target",
+        "name": "typing.NamedTuple",
+        "provenance": "external/unresolved"
+      },
+      {
+        "id": "import::.exceptions.ParseError",
+        "type": "import_target",
+        "name": ".exceptions.ParseError",
+        "provenance": "external/unresolved"
+      },
+      {
+        "id": "src\\iniconfig\\__init__.py",
+        "type": "file",
+        "provenance": "filesystem-walk"
+      },
+      {
+        "id": "src\\iniconfig\\__init__.py::SectionWrapper:24",
+        "type": "class",
+        "name": "SectionWrapper",
+        "file": "src\\iniconfig\\__init__.py",
+        "start_line": 24,
+        "end_line": 86,
+        "bases": [],
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\__init__.py::IniConfig:89",
+        "type": "class",
+        "name": "IniConfig",
+        "file": "src\\iniconfig\\__init__.py",
+        "start_line": 89,
+        "end_line": 249,
+        "bases": [],
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\__init__.py::SectionWrapper.__init__:28",
+        "type": "function",
+        "name": "__init__",
+        "file": "src\\iniconfig\\__init__.py",
+        "start_line": 28,
+        "end_line": 30,
+        "class_owner": "SectionWrapper",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\__init__.py::SectionWrapper.lineof:32",
+        "type": "function",
+        "name": "lineof",
+        "file": "src\\iniconfig\\__init__.py",
+        "start_line": 32,
+        "end_line": 33,
+        "class_owner": "SectionWrapper",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\__init__.py::SectionWrapper.get:36",
+        "type": "function",
+        "name": "get",
+        "file": "src\\iniconfig\\__init__.py",
+        "start_line": 36,
+        "end_line": 36,
+        "class_owner": "SectionWrapper",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\__init__.py::SectionWrapper.get:39",
+        "type": "function",
+        "name": "get",
+        "file": "src\\iniconfig\\__init__.py",
+        "start_line": 39,
+        "end_line": 43,
+        "class_owner": "SectionWrapper",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\__init__.py::SectionWrapper.get:46",
+        "type": "function",
+        "name": "get",
+        "file": "src\\iniconfig\\__init__.py",
+        "start_line": 46,
+        "end_line": 51,
+        "class_owner": "SectionWrapper",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\__init__.py::SectionWrapper.get:54",
+        "type": "function",
+        "name": "get",
+        "file": "src\\iniconfig\\__init__.py",
+        "start_line": 54,
+        "end_line": 54,
+        "class_owner": "SectionWrapper",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\__init__.py::SectionWrapper.get:57",
+        "type": "function",
+        "name": "get",
+        "file": "src\\iniconfig\\__init__.py",
+        "start_line": 57,
+        "end_line": 62,
+        "class_owner": "SectionWrapper",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\__init__.py::SectionWrapper.get:65",
+        "type": "function",
+        "name": "get",
+        "file": "src\\iniconfig\\__init__.py",
+        "start_line": 65,
+        "end_line": 71,
+        "class_owner": "SectionWrapper",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\__init__.py::SectionWrapper.__getitem__:73",
+        "type": "function",
+        "name": "__getitem__",
+        "file": "src\\iniconfig\\__init__.py",
+        "start_line": 73,
+        "end_line": 74,
+        "class_owner": "SectionWrapper",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\__init__.py::SectionWrapper.__iter__:76",
+        "type": "function",
+        "name": "__iter__",
+        "file": "src\\iniconfig\\__init__.py",
+        "start_line": 76,
+        "end_line": 82,
+        "class_owner": "SectionWrapper",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\__init__.py::SectionWrapper.lineof:79",
+        "type": "function",
+        "name": "lineof",
+        "file": "src\\iniconfig\\__init__.py",
+        "start_line": 79,
+        "end_line": 80,
+        "class_owner": "SectionWrapper",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\__init__.py::SectionWrapper.items:84",
+        "type": "function",
+        "name": "items",
+        "file": "src\\iniconfig\\__init__.py",
+        "start_line": 84,
+        "end_line": 86,
+        "class_owner": "SectionWrapper",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\__init__.py::IniConfig.__init__:94",
+        "type": "function",
+        "name": "__init__",
+        "file": "src\\iniconfig\\__init__.py",
+        "start_line": 94,
+        "end_line": 123,
+        "class_owner": "IniConfig",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\__init__.py::IniConfig.parse:126",
+        "type": "function",
+        "name": "parse",
+        "file": "src\\iniconfig\\__init__.py",
+        "start_line": 126,
+        "end_line": 178,
+        "class_owner": "IniConfig",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\__init__.py::IniConfig.lineof:180",
+        "type": "function",
+        "name": "lineof",
+        "file": "src\\iniconfig\\__init__.py",
+        "start_line": 180,
+        "end_line": 182,
+        "class_owner": "IniConfig",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\__init__.py::IniConfig.get:185",
+        "type": "function",
+        "name": "get",
+        "file": "src\\iniconfig\\__init__.py",
+        "start_line": 185,
+        "end_line": 189,
+        "class_owner": "IniConfig",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\__init__.py::IniConfig.get:192",
+        "type": "function",
+        "name": "get",
+        "file": "src\\iniconfig\\__init__.py",
+        "start_line": 192,
+        "end_line": 197,
+        "class_owner": "IniConfig",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\__init__.py::IniConfig.get:200",
+        "type": "function",
+        "name": "get",
+        "file": "src\\iniconfig\\__init__.py",
+        "start_line": 200,
+        "end_line": 206,
+        "class_owner": "IniConfig",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\__init__.py::IniConfig.get:209",
+        "type": "function",
+        "name": "get",
+        "file": "src\\iniconfig\\__init__.py",
+        "start_line": 209,
+        "end_line": 211,
+        "class_owner": "IniConfig",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\__init__.py::IniConfig.get:214",
+        "type": "function",
+        "name": "get",
+        "file": "src\\iniconfig\\__init__.py",
+        "start_line": 214,
+        "end_line": 220,
+        "class_owner": "IniConfig",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\__init__.py::IniConfig.get:222",
+        "type": "function",
+        "name": "get",
+        "file": "src\\iniconfig\\__init__.py",
+        "start_line": 222,
+        "end_line": 237,
+        "class_owner": "IniConfig",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\__init__.py::IniConfig.__getitem__:239",
+        "type": "function",
+        "name": "__getitem__",
+        "file": "src\\iniconfig\\__init__.py",
+        "start_line": 239,
+        "end_line": 242,
+        "class_owner": "IniConfig",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\__init__.py::IniConfig.__iter__:244",
+        "type": "function",
+        "name": "__iter__",
+        "file": "src\\iniconfig\\__init__.py",
+        "start_line": 244,
+        "end_line": 246,
+        "class_owner": "IniConfig",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "src\\iniconfig\\__init__.py::IniConfig.__contains__:248",
+        "type": "function",
+        "name": "__contains__",
+        "file": "src\\iniconfig\\__init__.py",
+        "start_line": 248,
+        "end_line": 249,
+        "class_owner": "IniConfig",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "import::os",
+        "type": "import_target",
+        "name": "os",
+        "provenance": "external/unresolved"
+      },
+      {
+        "id": "import::collections.abc.Callable",
+        "type": "import_target",
+        "name": "collections.abc.Callable",
+        "provenance": "external/unresolved"
+      },
+      {
+        "id": "import::collections.abc.Iterator",
+        "type": "import_target",
+        "name": "collections.abc.Iterator",
+        "provenance": "external/unresolved"
+      },
+      {
+        "id": "import::typing.TypeVar",
+        "type": "import_target",
+        "name": "typing.TypeVar",
+        "provenance": "external/unresolved"
+      },
+      {
+        "id": "import::typing.overload",
+        "type": "import_target",
+        "name": "typing.overload",
+        "provenance": "external/unresolved"
+      },
+      {
+        "id": "import::.._parse",
+        "type": "import_target",
+        "name": ".._parse",
+        "provenance": "external/unresolved"
+      },
+      {
+        "id": "import::._parse.COMMENTCHARS",
+        "type": "import_target",
+        "name": "._parse.COMMENTCHARS",
+        "provenance": "external/unresolved"
+      },
+      {
+        "id": "import::._parse.iscommentline",
+        "type": "import_target",
+        "name": "._parse.iscommentline",
+        "provenance": "external/unresolved"
+      },
+      {
+        "id": "testing\\conftest.py",
+        "type": "file",
+        "provenance": "filesystem-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py",
+        "type": "file",
+        "provenance": "filesystem-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::input_expected:48",
+        "type": "function",
+        "name": "input_expected",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 48,
+        "end_line": 49,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::input:53",
+        "type": "function",
+        "name": "input",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 53,
+        "end_line": 54,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::expected:58",
+        "type": "function",
+        "name": "expected",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 58,
+        "end_line": 59,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::parse:62",
+        "type": "function",
+        "name": "parse",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 62,
+        "end_line": 65,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::parse_a_error:68",
+        "type": "function",
+        "name": "parse_a_error",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 68,
+        "end_line": 74,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_tokenize:77",
+        "type": "function",
+        "name": "test_tokenize",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 77,
+        "end_line": 79,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_parse_empty:82",
+        "type": "function",
+        "name": "test_parse_empty",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 82,
+        "end_line": 86,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_ParseError:89",
+        "type": "function",
+        "name": "test_ParseError",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 89,
+        "end_line": 91,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_continuation_needs_perceeding_token:94",
+        "type": "function",
+        "name": "test_continuation_needs_perceeding_token",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 94,
+        "end_line": 96,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_continuation_cant_be_after_section:99",
+        "type": "function",
+        "name": "test_continuation_cant_be_after_section",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 99,
+        "end_line": 101,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_section_cant_be_empty:104",
+        "type": "function",
+        "name": "test_section_cant_be_empty",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 104,
+        "end_line": 106,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_error_on_weird_lines:115",
+        "type": "function",
+        "name": "test_error_on_weird_lines",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 115,
+        "end_line": 116,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_iniconfig_from_file:119",
+        "type": "function",
+        "name": "test_iniconfig_from_file",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 119,
+        "end_line": 128,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_iniconfig_section_first:131",
+        "type": "function",
+        "name": "test_iniconfig_section_first",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 131,
+        "end_line": 134,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_iniconig_section_duplicate_fails:137",
+        "type": "function",
+        "name": "test_iniconig_section_duplicate_fails",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 137,
+        "end_line": 140,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_iniconfig_duplicate_key_fails:143",
+        "type": "function",
+        "name": "test_iniconfig_duplicate_key_fails",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 143,
+        "end_line": 147,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_iniconfig_lineof:150",
+        "type": "function",
+        "name": "test_iniconfig_lineof",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 150,
+        "end_line": 163,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_iniconfig_get_convert:166",
+        "type": "function",
+        "name": "test_iniconfig_get_convert",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 166,
+        "end_line": 169,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_iniconfig_get_missing:172",
+        "type": "function",
+        "name": "test_iniconfig_get_missing",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 172,
+        "end_line": 175,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_section_get:178",
+        "type": "function",
+        "name": "test_section_get",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 178,
+        "end_line": 183,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_missing_section:186",
+        "type": "function",
+        "name": "test_missing_section",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 186,
+        "end_line": 189,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_section_getitem:192",
+        "type": "function",
+        "name": "test_section_getitem",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 192,
+        "end_line": 195,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_section_iter:198",
+        "type": "function",
+        "name": "test_section_iter",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 198,
+        "end_line": 203,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_config_iter:206",
+        "type": "function",
+        "name": "test_config_iter",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 206,
+        "end_line": 223,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_config_contains:226",
+        "type": "function",
+        "name": "test_config_contains",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 226,
+        "end_line": 240,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_iter_file_order:243",
+        "type": "function",
+        "name": "test_iter_file_order",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 243,
+        "end_line": 259,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_example_pypirc:262",
+        "type": "function",
+        "name": "test_example_pypirc",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 262,
+        "end_line": 289,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_api_import:292",
+        "type": "function",
+        "name": "test_api_import",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 292,
+        "end_line": 293,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_iscommentline_true:305",
+        "type": "function",
+        "name": "test_iscommentline_true",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 305,
+        "end_line": 306,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_parse_strips_inline_comments:309",
+        "type": "function",
+        "name": "test_parse_strips_inline_comments",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 309,
+        "end_line": 326,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_parse_strips_inline_comments_from_continuations:329",
+        "type": "function",
+        "name": "test_parse_strips_inline_comments_from_continuations",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 329,
+        "end_line": 343,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_parse_preserves_inline_comments_when_disabled:346",
+        "type": "function",
+        "name": "test_parse_preserves_inline_comments_when_disabled",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 346,
+        "end_line": 362,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_constructor_preserves_inline_comments_for_backward_compatibility:365",
+        "type": "function",
+        "name": "test_constructor_preserves_inline_comments_for_backward_compatibility",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 365,
+        "end_line": 378,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_unicode_whitespace_stripped:381",
+        "type": "function",
+        "name": "test_unicode_whitespace_stripped",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 381,
+        "end_line": 392,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_unicode_whitespace_in_section_names_with_opt_in:395",
+        "type": "function",
+        "name": "test_unicode_whitespace_in_section_names_with_opt_in",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 395,
+        "end_line": 404,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "testing\\test_iniconfig.py::test_unicode_whitespace_in_key_names:407",
+        "type": "function",
+        "name": "test_unicode_whitespace_in_key_names",
+        "file": "testing\\test_iniconfig.py",
+        "start_line": 407,
+        "end_line": 414,
+        "class_owner": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "id": "import::pathlib.Path",
+        "type": "import_target",
+        "name": "pathlib.Path",
+        "provenance": "external/unresolved"
+      },
+      {
+        "id": "import::textwrap.dedent",
+        "type": "import_target",
+        "name": "textwrap.dedent",
+        "provenance": "external/unresolved"
+      },
+      {
+        "id": "import::pytest",
+        "type": "import_target",
+        "name": "pytest",
+        "provenance": "external/unresolved"
+      },
+      {
+        "id": "import::iniconfig.IniConfig",
+        "type": "import_target",
+        "name": "iniconfig.IniConfig",
+        "provenance": "external/unresolved"
+      },
+      {
+        "id": "import::iniconfig.ParseError",
+        "type": "import_target",
+        "name": "iniconfig.ParseError",
+        "provenance": "external/unresolved"
+      },
+      {
+        "id": "import::iniconfig.__all__",
+        "type": "import_target",
+        "name": "iniconfig.__all__",
+        "provenance": "external/unresolved"
+      },
+      {
+        "id": "import::iniconfig.iscommentline",
+        "type": "import_target",
+        "name": "iniconfig.iscommentline",
+        "provenance": "external/unresolved"
+      },
+      {
+        "id": "import::iniconfig._parse.ParsedLine",
+        "type": "import_target",
+        "name": "iniconfig._parse.ParsedLine",
+        "provenance": "external/unresolved"
+      },
+      {
+        "id": "import::iniconfig._parse.parse_lines",
+        "type": "import_target",
+        "name": "iniconfig._parse.parse_lines",
+        "provenance": "external/unresolved"
+      },
+      {
+        "id": "unresolved_call::super().__init__"
+      },
+      {
+        "id": "unresolved_call::super"
+      },
+      {
+        "id": "unresolved_call::ParseError"
+      },
+      {
+        "id": "unresolved_call::data.splitlines"
+      },
+      {
+        "id": "unresolved_call::result.append"
+      },
+      {
+        "id": "unresolved_call::last._replace"
+      },
+      {
+        "id": "unresolved_call::result.pop"
+      },
+      {
+        "id": "unresolved_call::ParsedLine"
+      },
+      {
+        "id": "unresolved_call::enumerate"
+      },
+      {
+        "id": "unresolved_call::line.split(c)[0].rstrip"
+      },
+      {
+        "id": "unresolved_call::line.split"
+      },
+      {
+        "id": "unresolved_call::line.strip"
+      },
+      {
+        "id": "unresolved_call::value.split(c)[0].rstrip"
+      },
+      {
+        "id": "unresolved_call::value.split"
+      },
+      {
+        "id": "unresolved_call::value.strip"
+      },
+      {
+        "id": "unresolved_call::name.strip"
+      },
+      {
+        "id": "unresolved_call::ValueError"
+      },
+      {
+        "id": "unresolved_call::line[0].isspace"
+      },
+      {
+        "id": "unresolved_call::realline.strip"
+      },
+      {
+        "id": "unresolved_call::section_name.strip"
+      },
+      {
+        "id": "unresolved_call::line.rstrip"
+      },
+      {
+        "id": "unresolved_call::line.lstrip"
+      },
+      {
+        "id": "unresolved_call::self.config.lineof"
+      },
+      {
+        "id": "unresolved_call::self.config.get"
+      },
+      {
+        "id": "unresolved_call::sorted"
+      },
+      {
+        "id": "unresolved_call::self.config.sections.get"
+      },
+      {
+        "id": "unresolved_call::_parse.parse_ini_data"
+      },
+      {
+        "id": "unresolved_call::fp.read"
+      },
+      {
+        "id": "unresolved_call::open"
+      },
+      {
+        "id": "unresolved_call::os.fspath"
+      },
+      {
+        "id": "unresolved_call::cls"
+      },
+      {
+        "id": "unresolved_call::self._sources.get"
+      },
+      {
+        "id": "unresolved_call::convert"
+      },
+      {
+        "id": "unresolved_call::SectionWrapper"
+      },
+      {
+        "id": "unresolved_call::KeyError"
+      },
+      {
+        "id": "unresolved_call::input.splitlines"
+      },
+      {
+        "id": "unresolved_call::IniConfig"
+      },
+      {
+        "id": "unresolved_call::str"
+      },
+      {
+        "id": "unresolved_call::path.read_text"
+      },
+      {
+        "id": "unresolved_call::pytest.raises"
+      },
+      {
+        "id": "unresolved_call::list"
+      },
+      {
+        "id": "unresolved_call::path.write_text"
+      },
+      {
+        "id": "unresolved_call::config[\"section2\"].lineof"
+      },
+      {
+        "id": "unresolved_call::config[\"section\"].lineof"
+      },
+      {
+        "id": "unresolved_call::config.lineof"
+      },
+      {
+        "id": "unresolved_call::config.get"
+      },
+      {
+        "id": "unresolved_call::section.get"
+      },
+      {
+        "id": "unresolved_call::config[\"section\"].items"
+      },
+      {
+        "id": "unresolved_call::len"
+      },
+      {
+        "id": "unresolved_call::dedent"
+      },
+      {
+        "id": "unresolved_call::IniConfig.parse"
+      }
+    ],
+    "edges": [
+      {
+        "source": "src\\iniconfig\\exceptions.py",
+        "target": "src\\iniconfig\\exceptions.py::ParseError:4",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\exceptions.py",
+        "target": "import::typing.Final",
+        "relation": "imports",
+        "confidence": "structural_certain",
+        "line": 1,
+        "alias": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\exceptions.py::ParseError:4",
+        "target": "src\\iniconfig\\exceptions.py::ParseError.__init__:9",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\exceptions.py::ParseError:4",
+        "target": "src\\iniconfig\\exceptions.py::ParseError.__str__:15",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\exceptions.py::ParseError.__init__:9",
+        "target": "unresolved_call::super().__init__",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "super().__init__",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\exceptions.py::ParseError.__init__:9",
+        "target": "unresolved_call::super",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "super",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py",
+        "target": "src\\iniconfig\\_parse.py::ParsedLine:9",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py",
+        "target": "src\\iniconfig\\_parse.py::parse_ini_data:16",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py",
+        "target": "src\\iniconfig\\_parse.py::parse_lines:64",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py",
+        "target": "src\\iniconfig\\_parse.py::_parseline:102",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py",
+        "target": "src\\iniconfig\\_parse.py::iscommentline:161",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py",
+        "target": "import::collections.abc.Mapping",
+        "relation": "imports",
+        "confidence": "structural_certain",
+        "line": 1,
+        "alias": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py",
+        "target": "import::typing.NamedTuple",
+        "relation": "imports",
+        "confidence": "structural_certain",
+        "line": 2,
+        "alias": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py",
+        "target": "import::.exceptions.ParseError",
+        "relation": "imports",
+        "confidence": "structural_certain",
+        "line": 4,
+        "alias": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::parse_ini_data:16",
+        "target": "unresolved_call::ParseError",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "ParseError",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::parse_ini_data:16",
+        "target": "unresolved_call::ParseError",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "ParseError",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::parse_ini_data:16",
+        "target": "unresolved_call::ParseError",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "ParseError",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::parse_ini_data:16",
+        "target": "src\\iniconfig\\_parse.py::parse_lines:64",
+        "relation": "calls",
+        "confidence": "high_confidence",
+        "raw_call": "parse_lines",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::parse_ini_data:16",
+        "target": "unresolved_call::data.splitlines",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "data.splitlines",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::parse_lines:64",
+        "target": "unresolved_call::result.append",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "result.append",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::parse_lines:64",
+        "target": "unresolved_call::result.append",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "result.append",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::parse_lines:64",
+        "target": "unresolved_call::result.append",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "result.append",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::parse_lines:64",
+        "target": "unresolved_call::last._replace",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "last._replace",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::parse_lines:64",
+        "target": "unresolved_call::last._replace",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "last._replace",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::parse_lines:64",
+        "target": "unresolved_call::ParseError",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "ParseError",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::parse_lines:64",
+        "target": "unresolved_call::ParseError",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "ParseError",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::parse_lines:64",
+        "target": "unresolved_call::ParseError",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "ParseError",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::parse_lines:64",
+        "target": "unresolved_call::result.pop",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "result.pop",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::parse_lines:64",
+        "target": "unresolved_call::ParsedLine",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "ParsedLine",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::parse_lines:64",
+        "target": "unresolved_call::ParsedLine",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "ParsedLine",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::parse_lines:64",
+        "target": "src\\iniconfig\\_parse.py::_parseline:102",
+        "relation": "calls",
+        "confidence": "high_confidence",
+        "raw_call": "_parseline",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::parse_lines:64",
+        "target": "unresolved_call::enumerate",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "enumerate",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::_parseline:102",
+        "target": "unresolved_call::line.split(c)[0].rstrip",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "line.split(c)[0].rstrip",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::_parseline:102",
+        "target": "unresolved_call::line.split(c)[0].rstrip",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "line.split(c)[0].rstrip",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::_parseline:102",
+        "target": "unresolved_call::line.split",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "line.split",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::_parseline:102",
+        "target": "unresolved_call::line.split",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "line.split",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::_parseline:102",
+        "target": "unresolved_call::line.split",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "line.split",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::_parseline:102",
+        "target": "unresolved_call::line.split",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "line.split",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::_parseline:102",
+        "target": "unresolved_call::line.strip",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "line.strip",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::_parseline:102",
+        "target": "unresolved_call::value.split(c)[0].rstrip",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "value.split(c)[0].rstrip",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::_parseline:102",
+        "target": "unresolved_call::value.split",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "value.split",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::_parseline:102",
+        "target": "unresolved_call::value.strip",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "value.strip",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::_parseline:102",
+        "target": "unresolved_call::name.strip",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "name.strip",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::_parseline:102",
+        "target": "unresolved_call::ParseError",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "ParseError",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::_parseline:102",
+        "target": "unresolved_call::ValueError",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "ValueError",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::_parseline:102",
+        "target": "unresolved_call::line[0].isspace",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "line[0].isspace",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::_parseline:102",
+        "target": "unresolved_call::realline.strip",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "realline.strip",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::_parseline:102",
+        "target": "unresolved_call::section_name.strip",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "section_name.strip",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::_parseline:102",
+        "target": "unresolved_call::line.rstrip",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "line.rstrip",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::_parseline:102",
+        "target": "src\\iniconfig\\_parse.py::iscommentline:161",
+        "relation": "calls",
+        "confidence": "high_confidence",
+        "raw_call": "iscommentline",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\_parse.py::iscommentline:161",
+        "target": "unresolved_call::line.lstrip",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "line.lstrip",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py",
+        "target": "src\\iniconfig\\__init__.py::SectionWrapper:24",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py",
+        "target": "src\\iniconfig\\__init__.py::IniConfig:89",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py",
+        "target": "import::os",
+        "relation": "imports",
+        "confidence": "structural_certain",
+        "line": 5,
+        "alias": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py",
+        "target": "import::collections.abc.Callable",
+        "relation": "imports",
+        "confidence": "structural_certain",
+        "line": 6,
+        "alias": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py",
+        "target": "import::collections.abc.Iterator",
+        "relation": "imports",
+        "confidence": "structural_certain",
+        "line": 7,
+        "alias": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py",
+        "target": "import::collections.abc.Mapping",
+        "relation": "imports",
+        "confidence": "structural_certain",
+        "line": 8,
+        "alias": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py",
+        "target": "import::typing.Final",
+        "relation": "imports",
+        "confidence": "structural_certain",
+        "line": 9,
+        "alias": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py",
+        "target": "import::typing.TypeVar",
+        "relation": "imports",
+        "confidence": "structural_certain",
+        "line": 10,
+        "alias": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py",
+        "target": "import::typing.overload",
+        "relation": "imports",
+        "confidence": "structural_certain",
+        "line": 11,
+        "alias": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py",
+        "target": "import::.._parse",
+        "relation": "imports",
+        "confidence": "structural_certain",
+        "line": 15,
+        "alias": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py",
+        "target": "import::._parse.COMMENTCHARS",
+        "relation": "imports",
+        "confidence": "structural_certain",
+        "line": 16,
+        "alias": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py",
+        "target": "import::._parse.iscommentline",
+        "relation": "imports",
+        "confidence": "structural_certain",
+        "line": 17,
+        "alias": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py",
+        "target": "import::.exceptions.ParseError",
+        "relation": "imports",
+        "confidence": "structural_certain",
+        "line": 18,
+        "alias": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::SectionWrapper:24",
+        "target": "src\\iniconfig\\__init__.py::SectionWrapper.__init__:28",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::SectionWrapper:24",
+        "target": "src\\iniconfig\\__init__.py::SectionWrapper.lineof:32",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::SectionWrapper:24",
+        "target": "src\\iniconfig\\__init__.py::SectionWrapper.get:36",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::SectionWrapper:24",
+        "target": "src\\iniconfig\\__init__.py::SectionWrapper.get:39",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::SectionWrapper:24",
+        "target": "src\\iniconfig\\__init__.py::SectionWrapper.get:46",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::SectionWrapper:24",
+        "target": "src\\iniconfig\\__init__.py::SectionWrapper.get:54",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::SectionWrapper:24",
+        "target": "src\\iniconfig\\__init__.py::SectionWrapper.get:57",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::SectionWrapper:24",
+        "target": "src\\iniconfig\\__init__.py::SectionWrapper.get:65",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::SectionWrapper:24",
+        "target": "src\\iniconfig\\__init__.py::SectionWrapper.__getitem__:73",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::SectionWrapper:24",
+        "target": "src\\iniconfig\\__init__.py::SectionWrapper.__iter__:76",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::SectionWrapper:24",
+        "target": "src\\iniconfig\\__init__.py::SectionWrapper.lineof:79",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::SectionWrapper:24",
+        "target": "src\\iniconfig\\__init__.py::SectionWrapper.items:84",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::IniConfig:89",
+        "target": "src\\iniconfig\\__init__.py::IniConfig.__init__:94",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::IniConfig:89",
+        "target": "src\\iniconfig\\__init__.py::IniConfig.parse:126",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::IniConfig:89",
+        "target": "src\\iniconfig\\__init__.py::IniConfig.lineof:180",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::IniConfig:89",
+        "target": "src\\iniconfig\\__init__.py::IniConfig.get:185",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::IniConfig:89",
+        "target": "src\\iniconfig\\__init__.py::IniConfig.get:192",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::IniConfig:89",
+        "target": "src\\iniconfig\\__init__.py::IniConfig.get:200",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::IniConfig:89",
+        "target": "src\\iniconfig\\__init__.py::IniConfig.get:209",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::IniConfig:89",
+        "target": "src\\iniconfig\\__init__.py::IniConfig.get:214",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::IniConfig:89",
+        "target": "src\\iniconfig\\__init__.py::IniConfig.get:222",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::IniConfig:89",
+        "target": "src\\iniconfig\\__init__.py::IniConfig.__getitem__:239",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::IniConfig:89",
+        "target": "src\\iniconfig\\__init__.py::IniConfig.__iter__:244",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::IniConfig:89",
+        "target": "src\\iniconfig\\__init__.py::IniConfig.__contains__:248",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::SectionWrapper.lineof:32",
+        "target": "unresolved_call::self.config.lineof",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "self.config.lineof",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::SectionWrapper.get:65",
+        "target": "unresolved_call::self.config.get",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "self.config.get",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::SectionWrapper.__iter__:76",
+        "target": "unresolved_call::sorted",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "sorted",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::SectionWrapper.__iter__:76",
+        "target": "unresolved_call::self.config.lineof",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "self.config.lineof",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::SectionWrapper.__iter__:76",
+        "target": "unresolved_call::self.config.sections.get",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "self.config.sections.get",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::SectionWrapper.lineof:79",
+        "target": "unresolved_call::self.config.lineof",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "self.config.lineof",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::IniConfig.__init__:94",
+        "target": "unresolved_call::_parse.parse_ini_data",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "_parse.parse_ini_data",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::IniConfig.__init__:94",
+        "target": "unresolved_call::fp.read",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "fp.read",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::IniConfig.__init__:94",
+        "target": "unresolved_call::open",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "open",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::IniConfig.__init__:94",
+        "target": "unresolved_call::os.fspath",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "os.fspath",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::IniConfig.parse:126",
+        "target": "unresolved_call::cls",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "cls",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::IniConfig.parse:126",
+        "target": "unresolved_call::_parse.parse_ini_data",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "_parse.parse_ini_data",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::IniConfig.parse:126",
+        "target": "unresolved_call::fp.read",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "fp.read",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::IniConfig.parse:126",
+        "target": "unresolved_call::open",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "open",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::IniConfig.parse:126",
+        "target": "unresolved_call::os.fspath",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "os.fspath",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::IniConfig.lineof:180",
+        "target": "unresolved_call::self._sources.get",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "self._sources.get",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::IniConfig.get:222",
+        "target": "unresolved_call::convert",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "convert",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::IniConfig.__getitem__:239",
+        "target": "unresolved_call::SectionWrapper",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "SectionWrapper",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::IniConfig.__getitem__:239",
+        "target": "unresolved_call::KeyError",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "KeyError",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::IniConfig.__iter__:244",
+        "target": "unresolved_call::SectionWrapper",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "SectionWrapper",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "src\\iniconfig\\__init__.py::IniConfig.__iter__:244",
+        "target": "unresolved_call::sorted",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "sorted",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::input_expected:48",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::input:53",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::expected:58",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::parse:62",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::parse_a_error:68",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_tokenize:77",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_parse_empty:82",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_ParseError:89",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_continuation_needs_perceeding_token:94",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_continuation_cant_be_after_section:99",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_section_cant_be_empty:104",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_error_on_weird_lines:115",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_iniconfig_from_file:119",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_iniconfig_section_first:131",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_iniconig_section_duplicate_fails:137",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_iniconfig_duplicate_key_fails:143",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_iniconfig_lineof:150",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_iniconfig_get_convert:166",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_iniconfig_get_missing:172",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_section_get:178",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_missing_section:186",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_section_getitem:192",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_section_iter:198",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_config_iter:206",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_config_contains:226",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_iter_file_order:243",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_example_pypirc:262",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_api_import:292",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_iscommentline_true:305",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_parse_strips_inline_comments:309",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_parse_strips_inline_comments_from_continuations:329",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_parse_preserves_inline_comments_when_disabled:346",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_constructor_preserves_inline_comments_for_backward_compatibility:365",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_unicode_whitespace_stripped:381",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_unicode_whitespace_in_section_names_with_opt_in:395",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "testing\\test_iniconfig.py::test_unicode_whitespace_in_key_names:407",
+        "relation": "contains",
+        "confidence": "structural_certain",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "import::pathlib.Path",
+        "relation": "imports",
+        "confidence": "structural_certain",
+        "line": 1,
+        "alias": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "import::textwrap.dedent",
+        "relation": "imports",
+        "confidence": "structural_certain",
+        "line": 2,
+        "alias": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "import::pytest",
+        "relation": "imports",
+        "confidence": "structural_certain",
+        "line": 4,
+        "alias": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "import::iniconfig.IniConfig",
+        "relation": "imports",
+        "confidence": "structural_certain",
+        "line": 6,
+        "alias": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "import::iniconfig.ParseError",
+        "relation": "imports",
+        "confidence": "structural_certain",
+        "line": 7,
+        "alias": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "import::iniconfig.__all__",
+        "relation": "imports",
+        "confidence": "structural_certain",
+        "line": 8,
+        "alias": "ALL",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "import::iniconfig.iscommentline",
+        "relation": "imports",
+        "confidence": "structural_certain",
+        "line": 9,
+        "alias": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "import::iniconfig._parse.ParsedLine",
+        "relation": "imports",
+        "confidence": "structural_certain",
+        "line": 10,
+        "alias": "PL",
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py",
+        "target": "import::iniconfig._parse.parse_lines",
+        "relation": "imports",
+        "confidence": "structural_certain",
+        "line": 63,
+        "alias": null,
+        "provenance": "tree-sitter-python:AST-walk"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::parse:62",
+        "target": "src\\iniconfig\\_parse.py::parse_lines:64",
+        "relation": "calls",
+        "confidence": "low_confidence",
+        "raw_call": "parse_lines",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::parse:62",
+        "target": "unresolved_call::input.splitlines",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "input.splitlines",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::parse_a_error:68",
+        "target": "unresolved_call::ValueError",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "ValueError",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::parse_a_error:68",
+        "target": "testing\\test_iniconfig.py::parse:62",
+        "relation": "calls",
+        "confidence": "high_confidence",
+        "raw_call": "parse",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_tokenize:77",
+        "target": "testing\\test_iniconfig.py::parse:62",
+        "relation": "calls",
+        "confidence": "high_confidence",
+        "raw_call": "parse",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_parse_empty:82",
+        "target": "unresolved_call::IniConfig",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "IniConfig",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_parse_empty:82",
+        "target": "testing\\test_iniconfig.py::parse:62",
+        "relation": "calls",
+        "confidence": "high_confidence",
+        "raw_call": "parse",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_ParseError:89",
+        "target": "unresolved_call::str",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "str",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_ParseError:89",
+        "target": "unresolved_call::ParseError",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "ParseError",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_continuation_needs_perceeding_token:94",
+        "target": "testing\\test_iniconfig.py::parse_a_error:68",
+        "relation": "calls",
+        "confidence": "high_confidence",
+        "raw_call": "parse_a_error",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_continuation_cant_be_after_section:99",
+        "target": "testing\\test_iniconfig.py::parse_a_error:68",
+        "relation": "calls",
+        "confidence": "high_confidence",
+        "raw_call": "parse_a_error",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_section_cant_be_empty:104",
+        "target": "testing\\test_iniconfig.py::parse_a_error:68",
+        "relation": "calls",
+        "confidence": "high_confidence",
+        "raw_call": "parse_a_error",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_error_on_weird_lines:115",
+        "target": "testing\\test_iniconfig.py::parse_a_error:68",
+        "relation": "calls",
+        "confidence": "high_confidence",
+        "raw_call": "parse_a_error",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_from_file:119",
+        "target": "unresolved_call::IniConfig",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "IniConfig",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_from_file:119",
+        "target": "unresolved_call::IniConfig",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "IniConfig",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_from_file:119",
+        "target": "unresolved_call::IniConfig",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "IniConfig",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_from_file:119",
+        "target": "unresolved_call::path.read_text",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "path.read_text",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_from_file:119",
+        "target": "unresolved_call::pytest.raises",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "pytest.raises",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_from_file:119",
+        "target": "unresolved_call::list",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "list",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_from_file:119",
+        "target": "unresolved_call::list",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "list",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_from_file:119",
+        "target": "unresolved_call::str",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "str",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_from_file:119",
+        "target": "unresolved_call::str",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "str",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_from_file:119",
+        "target": "unresolved_call::path.write_text",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "path.write_text",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_section_first:131",
+        "target": "unresolved_call::IniConfig",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "IniConfig",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_section_first:131",
+        "target": "unresolved_call::pytest.raises",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "pytest.raises",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconig_section_duplicate_fails:137",
+        "target": "unresolved_call::str",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "str",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconig_section_duplicate_fails:137",
+        "target": "unresolved_call::IniConfig",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "IniConfig",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconig_section_duplicate_fails:137",
+        "target": "unresolved_call::pytest.raises",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "pytest.raises",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_duplicate_key_fails:143",
+        "target": "unresolved_call::str",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "str",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_duplicate_key_fails:143",
+        "target": "unresolved_call::IniConfig",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "IniConfig",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_duplicate_key_fails:143",
+        "target": "unresolved_call::pytest.raises",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "pytest.raises",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_lineof:150",
+        "target": "unresolved_call::config[\"section2\"].lineof",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "config[\"section2\"].lineof",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_lineof:150",
+        "target": "unresolved_call::config[\"section\"].lineof",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "config[\"section\"].lineof",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_lineof:150",
+        "target": "unresolved_call::config.lineof",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "config.lineof",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_lineof:150",
+        "target": "unresolved_call::config.lineof",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "config.lineof",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_lineof:150",
+        "target": "unresolved_call::config.lineof",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "config.lineof",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_lineof:150",
+        "target": "unresolved_call::config.lineof",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "config.lineof",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_lineof:150",
+        "target": "unresolved_call::config.lineof",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "config.lineof",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_lineof:150",
+        "target": "unresolved_call::IniConfig",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "IniConfig",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_get_convert:166",
+        "target": "unresolved_call::config.get",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "config.get",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_get_convert:166",
+        "target": "unresolved_call::config.get",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "config.get",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_get_convert:166",
+        "target": "unresolved_call::IniConfig",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "IniConfig",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_get_missing:172",
+        "target": "unresolved_call::config.get",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "config.get",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_get_missing:172",
+        "target": "unresolved_call::config.get",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "config.get",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iniconfig_get_missing:172",
+        "target": "unresolved_call::IniConfig",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "IniConfig",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_section_get:178",
+        "target": "unresolved_call::section.get",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "section.get",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_section_get:178",
+        "target": "unresolved_call::section.get",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "section.get",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_section_get:178",
+        "target": "unresolved_call::section.get",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "section.get",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_section_get:178",
+        "target": "unresolved_call::IniConfig",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "IniConfig",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_missing_section:186",
+        "target": "unresolved_call::pytest.raises",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "pytest.raises",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_missing_section:186",
+        "target": "unresolved_call::IniConfig",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "IniConfig",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_section_getitem:192",
+        "target": "unresolved_call::IniConfig",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "IniConfig",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_section_iter:198",
+        "target": "unresolved_call::list",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "list",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_section_iter:198",
+        "target": "unresolved_call::list",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "list",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_section_iter:198",
+        "target": "unresolved_call::config[\"section\"].items",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "config[\"section\"].items",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_section_iter:198",
+        "target": "unresolved_call::IniConfig",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "IniConfig",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_config_iter:206",
+        "target": "unresolved_call::len",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "len",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_config_iter:206",
+        "target": "unresolved_call::list",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "list",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_config_iter:206",
+        "target": "unresolved_call::IniConfig",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "IniConfig",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_config_iter:206",
+        "target": "unresolved_call::dedent",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "dedent",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_config_contains:226",
+        "target": "unresolved_call::IniConfig",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "IniConfig",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_config_contains:226",
+        "target": "unresolved_call::dedent",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "dedent",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iter_file_order:243",
+        "target": "unresolved_call::list",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "list",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iter_file_order:243",
+        "target": "unresolved_call::list",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "list",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iter_file_order:243",
+        "target": "unresolved_call::list",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "list",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iter_file_order:243",
+        "target": "unresolved_call::IniConfig",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "IniConfig",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_example_pypirc:262",
+        "target": "unresolved_call::list",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "list",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_example_pypirc:262",
+        "target": "unresolved_call::list",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "list",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_example_pypirc:262",
+        "target": "unresolved_call::IniConfig",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "IniConfig",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_example_pypirc:262",
+        "target": "unresolved_call::dedent",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "dedent",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_iscommentline_true:305",
+        "target": "src\\iniconfig\\_parse.py::iscommentline:161",
+        "relation": "calls",
+        "confidence": "low_confidence",
+        "raw_call": "iscommentline",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_parse_strips_inline_comments:309",
+        "target": "unresolved_call::IniConfig.parse",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "IniConfig.parse",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_parse_strips_inline_comments:309",
+        "target": "unresolved_call::dedent",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "dedent",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_parse_strips_inline_comments_from_continuations:329",
+        "target": "unresolved_call::IniConfig.parse",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "IniConfig.parse",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_parse_strips_inline_comments_from_continuations:329",
+        "target": "unresolved_call::dedent",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "dedent",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_parse_preserves_inline_comments_when_disabled:346",
+        "target": "unresolved_call::IniConfig.parse",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "IniConfig.parse",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_parse_preserves_inline_comments_when_disabled:346",
+        "target": "unresolved_call::dedent",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "dedent",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_constructor_preserves_inline_comments_for_backward_compatibility:365",
+        "target": "unresolved_call::IniConfig",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "IniConfig",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_constructor_preserves_inline_comments_for_backward_compatibility:365",
+        "target": "unresolved_call::dedent",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "dedent",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_unicode_whitespace_stripped:381",
+        "target": "unresolved_call::IniConfig",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "IniConfig",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_unicode_whitespace_in_section_names_with_opt_in:395",
+        "target": "unresolved_call::IniConfig.parse",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "attribute_call_unknown_receiver_type",
+        "raw_call": "IniConfig.parse",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      },
+      {
+        "source": "testing\\test_iniconfig.py::test_unicode_whitespace_in_key_names:407",
+        "target": "unresolved_call::IniConfig",
+        "relation": "calls",
+        "confidence": "flagged",
+        "reason": "no_matching_definition_found",
+        "raw_call": "IniConfig",
+        "provenance": "graph_builder:call_resolution_heuristic"
+      }
+    ]
+  },
+  "health_score": {
+    "composite_health_score": 79.42,
+    "status": "complete",
+    "sub_scores": {
+      "complexity": 81.25,
+      "maintainability": 61.67,
+      "security": 98.0
+    },
+    "component_statuses": {
+      "complexity": "success",
+      "maintainability": "success",
+      "security": "success"
+    },
+    "missing_components": [],
+    "weights_used": {
+      "complexity": 0.35,
+      "maintainability": 0.35,
+      "security": 0.3
+    },
+    "weights_renormalized": false,
+    "formula": "weighted average of available sub-scores; weights renormalized to sum to 1 if any component is missing (never treated as 0 or 100)",
+    "scope_policy": "production_code_only",
+    "note": "Call-graph resolution confidence is reported separately (graph_builder.graph_summary) and intentionally NOT blended into this score -- it measures analysis coverage, not code quality. 'status' reflects whether EVERY component fully succeeded, not merely whether a numeric score could be computed -- a 'partial' component can still contribute a number without the overall result being 'complete'."
+  }
+}

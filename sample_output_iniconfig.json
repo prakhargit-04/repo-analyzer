@@ -1,0 +1,123 @@
+{
+  "repository": "/tmp/iniconfig_test",
+  "commit_sha": "00e7d87c7353b1ffecc4cd55f19acfffedd5233e",
+  "cache_snapshot_id": "content-sha256:dae4831c6dc49f0a0076e04088df1e74a5cabfea34b528439fbf094a484c6076",
+  "cache_schema_version": "v3",
+  "analyzer_version": "0.2.0",
+  "cache_key_basis": "content_hash (local path -- git HEAD alone is not trusted because working tree may have uncommitted changes)",
+  "analyzed_at_utc": "2026-08-26T10:21:00.865296+00:00",
+  "files_analyzed": 5,
+  "parse_errors": [],
+  "static_analysis": {
+    "scope_policy": "production_code_only",
+    "production_files_analyzed": 3,
+    "test_files_excluded": 2,
+    "complexity": {
+      "status": "success",
+      "results": [
+        {
+          "file": "src/iniconfig/_parse.py",
+          "function": "parse_ini_data",
+          "line": 16,
+          "cyclomatic_complexity": 7,
+          "rank": "B",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "src/iniconfig/_parse.py",
+          "function": "parse_lines",
+          "line": 64,
+          "cyclomatic_complexity": 12,
+          "rank": "C",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "src/iniconfig/_parse.py",
+          "function": "_parseline",
+          "line": 102,
+          "cyclomatic_complexity": 15,
+          "rank": "C",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "src/iniconfig/_parse.py",
+          "function": "iscommentline",
+          "line": 161,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        }
+      ]
+    },
+    "maintainability": {
+      "status": "success",
+      "results": [
+        {
+          "file": "src/iniconfig/_parse.py",
+          "maintainability_index": 56.9,
+          "provenance": "radon:6.0.1:mi_visit"
+        },
+        {
+          "file": "src/iniconfig/__init__.py",
+          "maintainability_index": 58.91,
+          "provenance": "radon:6.0.1:mi_visit"
+        },
+        {
+          "file": "src/iniconfig/exceptions.py",
+          "maintainability_index": 69.2,
+          "provenance": "radon:6.0.1:mi_visit"
+        }
+      ]
+    },
+    "security": {
+      "status": "success",
+      "results": [
+        {
+          "file": "src/iniconfig/_parse.py",
+          "line": 58,
+          "issue_text": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.",
+          "severity": "LOW",
+          "confidence": "HIGH",
+          "test_id": "B101",
+          "provenance": "bandit:1.9.4"
+        }
+      ]
+    }
+  },
+  "knowledge_graph_summary": {
+    "total_nodes": 147,
+    "total_edges": 236,
+    "call_edges_total": 142,
+    "call_edges_by_confidence": {
+      "high_confidence": 10,
+      "low_confidence": 2,
+      "flagged": 130
+    },
+    "call_edges_resolved_pct": 8.5,
+    "resolution_caveat": "high_confidence/low_confidence are name-matching heuristics, not verified Python scope resolution -- see graph_builder.py docstring."
+  },
+  "health_score": {
+    "composite_health_score": 79.42,
+    "status": "complete",
+    "sub_scores": {
+      "complexity": 81.25,
+      "maintainability": 61.67,
+      "security": 98.0
+    },
+    "component_statuses": {
+      "complexity": "success",
+      "maintainability": "success",
+      "security": "success"
+    },
+    "missing_components": [],
+    "weights_used": {
+      "complexity": 0.35,
+      "maintainability": 0.35,
+      "security": 0.3
+    },
+    "weights_renormalized": false,
+    "formula": "weighted average of available sub-scores; weights renormalized to sum to 1 if any component is missing (never treated as 0 or 100)",
+    "scope_policy": "production_code_only",
+    "note": "Call-graph resolution confidence is reported separately (graph_builder.graph_summary) and intentionally NOT blended into this score -- it measures analysis coverage, not code quality. 'status' reflects whether EVERY component fully succeeded, not merely whether a numeric score could be computed -- a 'partial' component can still contribute a number without the overall result being 'complete'."
+  }
+}

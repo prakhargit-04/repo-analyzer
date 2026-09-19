@@ -1,0 +1,6 @@
+tree_sitter==0.21.3
+tree_sitter_languages==1.10.2
+radon>=6.0
+lizard>=1.17
+bandit>=1.7
+networkx>=3.0

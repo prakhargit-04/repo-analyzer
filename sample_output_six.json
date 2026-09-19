@@ -1,0 +1,427 @@
+{
+  "repository": "/tmp/six_test",
+  "commit_sha": "c8e394065cd541a16c040515dc0afb85cf22a7c3",
+  "cache_snapshot_id": "content-sha256:de18bdd4d2f83bc7a495a84a112e0f24519efc60156da215f9801d333ac120fa",
+  "cache_schema_version": "v3",
+  "analyzer_version": "0.2.0",
+  "cache_key_basis": "content_hash (local path -- git HEAD alone is not trusted because working tree may have uncommitted changes)",
+  "analyzed_at_utc": "2026-08-26T10:21:00.508264+00:00",
+  "files_analyzed": 4,
+  "parse_errors": [],
+  "static_analysis": {
+    "scope_policy": "production_code_only",
+    "production_files_analyzed": 3,
+    "test_files_excluded": 1,
+    "complexity": {
+      "status": "success",
+      "results": [
+        {
+          "file": "six.py",
+          "function": "_add_doc",
+          "line": 80,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "_import_module",
+          "line": 85,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "add_move",
+          "line": 515,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "remove_move",
+          "line": 520,
+          "cyclomatic_complexity": 3,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "advance_iterator",
+          "line": 552,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "callable",
+          "line": 560,
+          "cyclomatic_complexity": 2,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "get_unbound_function",
+          "line": 565,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "create_unbound_method",
+          "line": 570,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "get_unbound_function",
+          "line": 575,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "create_bound_method",
+          "line": 578,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "create_unbound_method",
+          "line": 581,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "iterkeys",
+          "line": 603,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "itervalues",
+          "line": 606,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "iteritems",
+          "line": 609,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "iterlists",
+          "line": 612,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "iterkeys",
+          "line": 621,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "itervalues",
+          "line": 624,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "iteritems",
+          "line": 627,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "iterlists",
+          "line": 630,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "b",
+          "line": 648,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "u",
+          "line": 651,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "b",
+          "line": 674,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "u",
+          "line": 678,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "byte2int",
+          "line": 683,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "indexbytes",
+          "line": 686,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "assertCountEqual",
+          "line": 699,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "assertRaisesRegex",
+          "line": 703,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "assertRegex",
+          "line": 707,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "assertNotRegex",
+          "line": 711,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "reraise",
+          "line": 718,
+          "cyclomatic_complexity": 3,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "exec_",
+          "line": 730,
+          "cyclomatic_complexity": 4,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "raise_from",
+          "line": 758,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "print_",
+          "line": 764,
+          "cyclomatic_complexity": 17,
+          "rank": "C",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "print_",
+          "line": 820,
+          "cyclomatic_complexity": 3,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "_update_wrapper",
+          "line": 835,
+          "cyclomatic_complexity": 5,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "wraps",
+          "line": 851,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "with_metaclass",
+          "line": 861,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "add_metaclass",
+          "line": 885,
+          "cyclomatic_complexity": 1,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "ensure_binary",
+          "line": 903,
+          "cyclomatic_complexity": 3,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "ensure_str",
+          "line": 921,
+          "cyclomatic_complexity": 7,
+          "rank": "B",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "ensure_text",
+          "line": 944,
+          "cyclomatic_complexity": 3,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        },
+        {
+          "file": "six.py",
+          "function": "python_2_unicode_compatible",
+          "line": 963,
+          "cyclomatic_complexity": 3,
+          "rank": "A",
+          "provenance": "radon:6.0.1:cc_visit"
+        }
+      ]
+    },
+    "maintainability": {
+      "status": "success",
+      "results": [
+        {
+          "file": "setup.py",
+          "maintainability_index": 100.0,
+          "provenance": "radon:6.0.1:mi_visit"
+        },
+        {
+          "file": "six.py",
+          "maintainability_index": 22.95,
+          "provenance": "radon:6.0.1:mi_visit"
+        },
+        {
+          "file": "documentation/conf.py",
+          "maintainability_index": 40.45,
+          "provenance": "radon:6.0.1:mi_visit"
+        }
+      ]
+    },
+    "security": {
+      "status": "success",
+      "results": [
+        {
+          "file": "six.py",
+          "line": 740,
+          "issue_text": "Use of exec detected.",
+          "severity": "MEDIUM",
+          "confidence": "HIGH",
+          "test_id": "B102",
+          "provenance": "bandit:1.9.4"
+        }
+      ]
+    }
+  },
+  "knowledge_graph_summary": {
+    "total_nodes": 473,
+    "total_edges": 892,
+    "call_edges_total": 585,
+    "call_edges_by_confidence": {
+      "high_confidence": 11,
+      "low_confidence": 0,
+      "flagged": 574
+    },
+    "call_edges_resolved_pct": 1.9,
+    "resolution_caveat": "high_confidence/low_confidence are name-matching heuristics, not verified Python scope resolution -- see graph_builder.py docstring."
+  },
+  "health_score": {
+    "composite_health_score": 81.59,
+    "status": "complete",
+    "sub_scores": {
+      "complexity": 98.93,
+      "maintainability": 54.47,
+      "security": 93.0
+    },
+    "component_statuses": {
+      "complexity": "success",
+      "maintainability": "success",
+      "security": "success"
+    },
+    "missing_components": [],
+    "weights_used": {
+      "complexity": 0.35,
+      "maintainability": 0.35,
+      "security": 0.3
+    },
+    "weights_renormalized": false,
+    "formula": "weighted average of available sub-scores; weights renormalized to sum to 1 if any component is missing (never treated as 0 or 100)",
+    "scope_policy": "production_code_only",
+    "note": "Call-graph resolution confidence is reported separately (graph_builder.graph_summary) and intentionally NOT blended into this score -- it measures analysis coverage, not code quality. 'status' reflects whether EVERY component fully succeeded, not merely whether a numeric score could be computed -- a 'partial' component can still contribute a number without the overall result being 'complete'."
+  }
+}

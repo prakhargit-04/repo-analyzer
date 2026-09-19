@@ -1,0 +1,27 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Caching & Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.cache/
+
+# Archives & Temporary files
+*.zip
+*.tar.gz
+
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+.cache_new/ 
