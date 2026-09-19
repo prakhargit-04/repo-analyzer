@@ -716,15 +716,6 @@ class GitleaksAnalyzer(BaseAnalyzer):
         return True
 
     def analyze(self, repo_root: str, files: List[str]) -> AnalyzerResult:
-        avail, err = self.is_available()
-        if not avail:
-            return AnalyzerResult(
-                status=AnalyzerStatus.UNAVAILABLE,
-                errors=[err] if err else [],
-                provenance=self.provenance_tag,
-                metadata={"reason": err or "gitleaks executable not found on PATH"},
-            )
-
         abs_files = sorted({
             (f if os.path.isabs(f) else os.path.join(repo_root, f))
             for f in files
@@ -735,6 +726,15 @@ class GitleaksAnalyzer(BaseAnalyzer):
                 status=AnalyzerStatus.UNSUPPORTED,
                 provenance=self.provenance_tag,
                 metadata={"reason": "None of the provided file paths exist on disk"},
+            )
+
+        avail, err = self.is_available()
+        if not avail:
+            return AnalyzerResult(
+                status=AnalyzerStatus.UNAVAILABLE,
+                errors=[err] if err else [],
+                provenance=self.provenance_tag,
+                metadata={"reason": err or "gitleaks executable not found on PATH"},
             )
 
         temp_fd, temp_report_path = tempfile.mkstemp(suffix=".json", prefix="gitleaks_report_")
