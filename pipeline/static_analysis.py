@@ -16,9 +16,8 @@ identically everywhere, so the three metrics can no longer drift out of
 sync the way they did before (tests were excluded from bandit but not from
 radon in the previous version).
 
-Tools wired up in this Tier-1 (Python-only) MVP: radon, bandit.
+Tools wired up in this Tier-1 (Python-only) MVP: radon, bandit, lizard.
 Deliberately NOT wired up yet (documented, not silently skipped):
-  - lizard    : next after this fix pass, per review feedback
   - semgrep   : heavy, rule-config-dependent; add once Tier 1 core is stable
   - gitleaks  : Go binary, not pip-installable; needs a separate container step
   - OSV.dev   : requires outbound network call; wire in the deployed environment
@@ -30,6 +29,7 @@ import os
 import sys
 from dataclasses import dataclass, asdict
 from importlib.metadata import version as pkg_version, PackageNotFoundError
+from typing import List, Optional
 
 import radon
 import radon.complexity as radon_cc
@@ -37,6 +37,7 @@ from radon.visitors import ComplexityVisitor
 from radon.metrics import mi_visit
 
 from util import is_test_file
+from analyzer_contract import BaseAnalyzer, AnalyzerResult, AnalyzerStatus
 
 
 def _safe_version(pkg_name: str) -> str:
@@ -48,6 +49,14 @@ def _safe_version(pkg_name: str) -> str:
 
 RADON_VERSION = getattr(radon, "__version__", _safe_version("radon"))
 BANDIT_VERSION = _safe_version("bandit")
+
+# Lizard version: lizard exposes `lizard.version` (a plain string), not __version__.
+try:
+    import lizard as _lizard_mod
+    LIZARD_VERSION = str(getattr(_lizard_mod, "version", _safe_version("lizard")))
+except ImportError:
+    _lizard_mod = None  # type: ignore[assignment]
+    LIZARD_VERSION = "unavailable"
 
 
 @dataclass
@@ -168,11 +177,134 @@ def run_bandit(repo_root: str, prod_files_rel: list):
     return "success", issues
 
 
+# ---------------------------------------------------------------------------
+# Session 3 — LizardAnalyzer (BaseAnalyzer contract)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class LizardFunctionResult:
+    """Per-function result from Lizard (language-agnostic)."""
+    file: str
+    function: str
+    line: int
+    cyclomatic_complexity: int
+    nloc: int
+    token_count: int
+    max_nesting_depth: int
+    provenance: str = f"lizard:{LIZARD_VERSION}"
+
+
+class LizardAnalyzer(BaseAnalyzer):
+    """
+    Language-agnostic cyclomatic-complexity analyzer backed by the `lizard`
+    package (pip-installable, pure Python, supports 30+ languages).
+
+    Contract:
+      - unavailable  : `lizard` package not importable
+      - unsupported  : called with an empty file list
+      - success      : all files analyzed cleanly
+      - partial      : at least one file failed but at least one succeeded
+      - failed       : every file failed (or single-file crash with no results)
+    """
+
+    # Languages whose source files Lizard can meaningfully analyze.
+    # This list is intentionally conservative -- Lizard supports more,
+    # but we only claim support for languages the pipeline currently handles.
+    SUPPORTED_LANGUAGES = {
+        "python", "java", "javascript", "typescript", "c", "c++", "c#",
+        "go", "ruby", "swift", "kotlin", "rust", "scala",
+    }
+
+    def __init__(self) -> None:
+        super().__init__(name="lizard", version=LIZARD_VERSION)
+
+    # --- BaseAnalyzer interface ---
+
+    def is_available(self) -> tuple[bool, Optional[str]]:
+        if _lizard_mod is None:
+            return False, "Package 'lizard' is not installed in this environment (pip install lizard>=1.17)"
+        return True, None
+
+    def supports_language(self, language: str) -> bool:
+        return language.lower() in self.SUPPORTED_LANGUAGES
+
+    def analyze(self, repo_root: str, files: List[str]) -> AnalyzerResult:
+        """Run Lizard over *files* (absolute or relative to *repo_root*)."""
+        avail, err = self.is_available()
+        if not avail:
+            return AnalyzerResult(
+                status=AnalyzerStatus.UNAVAILABLE,
+                errors=[err] if err else [],
+                provenance=self.provenance_tag,
+                metadata={"lizard_version": LIZARD_VERSION},
+            )
+
+        if not files:
+            return AnalyzerResult(
+                status=AnalyzerStatus.UNSUPPORTED,
+                provenance=self.provenance_tag,
+                metadata={"reason": "No files provided for analysis"},
+            )
+
+        results: List[LizardFunctionResult] = []
+        errors: List[str] = []
+        file_success_count = 0
+
+        for f in sorted(files):  # deterministic ordering
+            abs_path = f if os.path.isabs(f) else os.path.join(repo_root, f)
+            rel_path = os.path.relpath(abs_path, repo_root).replace("\\", "/")
+            try:
+                file_info = _lizard_mod.analyze_file(abs_path)
+                if file_info is None:
+                    errors.append(f"{rel_path}: lizard returned no result")
+                    continue
+                for fn in file_info.function_list:
+                    results.append(LizardFunctionResult(
+                        file=rel_path,
+                        function=fn.name,
+                        line=fn.start_line,
+                        cyclomatic_complexity=fn.cyclomatic_complexity,
+                        nloc=fn.nloc,
+                        token_count=fn.token_count,
+                        max_nesting_depth=fn.max_nesting_depth,
+                    ))
+                file_success_count += 1
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"{rel_path}: {exc}")
+
+        if file_success_count == 0 and errors:
+            status = AnalyzerStatus.FAILED
+        elif errors:
+            status = AnalyzerStatus.PARTIAL
+        else:
+            status = AnalyzerStatus.SUCCESS
+
+        return AnalyzerResult(
+            status=status,
+            results=[asdict(r) for r in results],
+            errors=errors,
+            provenance=self.provenance_tag,
+            metadata={
+                "lizard_version": LIZARD_VERSION,
+                "files_analyzed": file_success_count,
+                "files_failed": len(errors),
+            },
+        )
+
+
+# Module-level singleton — created once, reused across calls.
+_LIZARD_ANALYZER = LizardAnalyzer()
+
+
 def analyze_repository(repo_root: str, py_files_rel: list) -> dict:
     """
     py_files_rel: ALL python files found (test + production). This function
     partitions them itself using the single shared is_test_file() definition
     so complexity/maintainability/security all see the identical split.
+
+    Lizard complexity runs over production files and is language-agnostic;
+    it supplements (not replaces) the Radon per-file complexity already
+    captured for Python.
     """
     if not py_files_rel:
         return {
@@ -182,6 +314,7 @@ def analyze_repository(repo_root: str, py_files_rel: list) -> dict:
             "complexity": {"status": "unsupported", "results": []},
             "maintainability": {"status": "unsupported", "results": []},
             "security": {"status": "unsupported", "results": []},
+            "lizard_complexity": {"status": "unsupported", "results": []},
         }
 
     prod_files = [f for f in py_files_rel if not is_test_file(f)]
@@ -212,6 +345,12 @@ def analyze_repository(repo_root: str, py_files_rel: list) -> dict:
 
     security_status, security_results = run_bandit(repo_root, prod_files)
 
+    # --- Lizard (language-agnostic cyclomatic complexity) ---
+    # Converts relative paths to absolute before passing to LizardAnalyzer.
+    abs_prod_files = [os.path.join(repo_root, f) for f in prod_files]
+    lizard_result = _LIZARD_ANALYZER.analyze(repo_root, abs_prod_files)
+    lizard_dict = lizard_result.to_dict()
+
     return {
         "scope_policy": "production_code_only",
         "production_files_analyzed": len(prod_files),
@@ -219,4 +358,5 @@ def analyze_repository(repo_root: str, py_files_rel: list) -> dict:
         "complexity": {"status": complexity_status, "results": [asdict(c) for c in complexity_results]},
         "maintainability": {"status": maintainability_status, "results": [asdict(m) for m in maintainability_results]},
         "security": {"status": security_status, "results": [asdict(s) for s in security_results]},
+        "lizard_complexity": lizard_dict,
     }

@@ -24,7 +24,7 @@ IGNORED_SNAPSHOT_DIRS = {".git", "__pycache__", ".venv", "venv", "node_modules",
 # analyzer did.
 CACHE_SCHEMA_VERSION = "v4"  # bumped: Session 1 schema freeze v1.0.0
 SCHEMA_VERSION = "1.0.0"
-ANALYZER_VERSION = "0.2.0"  # bumped: weights_used renormalization + duplicate-name fixes changed output
+ANALYZER_VERSION = "0.3.0"  # bumped: Session 3 — Lizard integration adds lizard_complexity to output
 
 
 def is_test_file(rel_path: str) -> bool:

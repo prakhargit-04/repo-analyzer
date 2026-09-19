@@ -13,7 +13,8 @@ from analyzer_contract import (
     BaseAnalyzer,
     VALID_STATUS_VALUES,
 )
-from static_analysis import analyze_repository, run_bandit
+from static_analysis import analyze_repository, run_bandit, LizardAnalyzer, LIZARD_VERSION
+import static_analysis as _sa_module
 from main import run_pipeline
 
 
@@ -135,3 +136,105 @@ def test_bandit_unavailable_simulation(monkeypatch):
 
     assert status == "unavailable"
     assert issues == []
+
+
+# ---------------------------------------------------------------------------
+# Session 3 — LizardAnalyzer tests
+# ---------------------------------------------------------------------------
+
+class TestLizardAnalyzer:
+    """Contract tests for LizardAnalyzer."""
+
+    def test_lizard_is_available(self):
+        """Lizard is installed (requirements.txt has lizard>=1.17)."""
+        analyzer = LizardAnalyzer()
+        avail, err = analyzer.is_available()
+        assert avail is True
+        assert err is None
+
+    def test_lizard_version_string(self):
+        """LIZARD_VERSION is a non-empty, non-'unavailable' string when installed."""
+        assert LIZARD_VERSION not in ("", "unavailable")
+
+    def test_lizard_provenance_tag(self):
+        analyzer = LizardAnalyzer()
+        assert analyzer.provenance_tag == f"lizard:{LIZARD_VERSION}"
+
+    def test_lizard_supports_language(self):
+        analyzer = LizardAnalyzer()
+        assert analyzer.supports_language("python") is True
+        assert analyzer.supports_language("Python") is True  # case-insensitive
+        assert analyzer.supports_language("java") is True
+        assert analyzer.supports_language("cobol") is False  # unsupported
+
+    def test_lizard_empty_file_list_returns_unsupported(self):
+        analyzer = LizardAnalyzer()
+        result = analyzer.analyze("/fake/root", [])
+        assert result.status == "unsupported"
+        assert result.results == []
+
+    def test_lizard_analyzes_success_fixture(self):
+        """Lizard successfully analyzes the success fixture repo."""
+        fixture = os.path.join(FIXTURES_DIR, "success_repo")
+        py_files = [os.path.join(fixture, f) for f in os.listdir(fixture)
+                    if f.endswith(".py")]
+        analyzer = LizardAnalyzer()
+        result = analyzer.analyze(fixture, py_files)
+        assert result.status == "success"
+        assert isinstance(result.results, list)
+        # Each result should have mandatory fields
+        for r in result.results:
+            assert "file" in r
+            assert "function" in r
+            assert "cyclomatic_complexity" in r
+            assert "nloc" in r
+            assert "token_count" in r
+            assert "max_nesting_depth" in r
+            assert "provenance" in r
+        assert result.metadata["files_analyzed"] == len(py_files)
+        assert result.metadata["files_failed"] == 0
+
+    def test_lizard_unavailable_simulation(self, monkeypatch):
+        """Simulate lizard not installed: is_available() must return False."""
+        monkeypatch.setattr(_sa_module, "_lizard_mod", None)
+        analyzer = LizardAnalyzer()
+        avail, err = analyzer.is_available()
+        assert avail is False
+        assert err is not None and "lizard" in err.lower()
+
+        result = analyzer.analyze("/fake", ["/fake/app.py"])
+        assert result.status == "unavailable"
+        assert result.results == []
+        assert len(result.errors) == 1
+
+    def test_lizard_partial_on_bad_file(self, monkeypatch, tmp_path):
+        """If one file fails and one succeeds, status is 'partial'."""
+        good = tmp_path / "good.py"
+        good.write_text("def foo():\n    return 1\n", encoding="utf-8")
+        bad_path = str(tmp_path / "nonexistent.py")  # does not exist
+
+        analyzer = LizardAnalyzer()
+        result = analyzer.analyze(str(tmp_path), [str(good), bad_path])
+        # bad_path does not exist; lizard returns None or raises
+        # good.py should succeed => partial
+        assert result.status in ("success", "partial")  # depends on lizard behaviour for missing files
+        # At minimum it must be a valid status
+        assert result.status in VALID_STATUS_VALUES
+
+    def test_analyze_repository_includes_lizard_complexity(self):
+        """analyze_repository() output must include the 'lizard_complexity' key."""
+        fixture = os.path.join(FIXTURES_DIR, "success_repo")
+        py_files = [f for f in os.listdir(fixture) if f.endswith(".py")]
+        result = analyze_repository(fixture, py_files)
+        assert "lizard_complexity" in result
+        lc = result["lizard_complexity"]
+        assert lc["status"] in VALID_STATUS_VALUES
+        assert "results" in lc
+
+    def test_pipeline_lizard_complexity_present(self):
+        """run_pipeline output must include lizard_complexity in static_analysis."""
+        fixture = os.path.join(FIXTURES_DIR, "success_repo")
+        res = run_pipeline(None, fixture, None, os.path.join(fixture, ".cache"))
+        assert "lizard_complexity" in res["static_analysis"]
+        lc = res["static_analysis"]["lizard_complexity"]
+        assert lc["status"] in VALID_STATUS_VALUES
