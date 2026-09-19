@@ -24,7 +24,7 @@ IGNORED_SNAPSHOT_DIRS = {".git", "__pycache__", ".venv", "venv", "node_modules",
 # analyzer did.
 CACHE_SCHEMA_VERSION = "v4"  # bumped: Session 1 schema freeze v1.0.0
 SCHEMA_VERSION = "1.0.0"
-ANALYZER_VERSION = "0.9.0"  # bumped: Session 9 — Tree-sitter Java parser integration
+ANALYZER_VERSION = "0.10.0"  # bumped: Session 10 — Tree-sitter JS/TS parser integration
 
 
 def is_test_file(rel_path: str) -> bool:

@@ -120,6 +120,56 @@ class JavaParser(BaseParser):
         return parse_java_file(filepath, repo_root)
 
 
+class JavaScriptParser(BaseParser):
+    """Adapter wrapping tree-sitter JavaScript parser behind BaseParser contract."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="tree-sitter-javascript",
+            version="AST-walk",
+            supported_languages={"javascript"},
+            supported_extensions={".js", ".jsx"},
+        )
+
+    def is_available(self) -> Tuple[bool, Optional[str]]:
+        try:
+            from parse_jsts import JS_PARSER
+            if JS_PARSER is not None:
+                return True, None
+            return False, "JavaScript tree-sitter parser is not initialized"
+        except Exception as exc:  # noqa: BLE001
+            return False, f"Failed to load tree-sitter-javascript: {exc}"
+
+    def parse_file(self, filepath: str, repo_root: str) -> FileParseResult:
+        from parse_jsts import parse_js_ts_file
+        return parse_js_ts_file(filepath, repo_root)
+
+
+class TypeScriptParser(BaseParser):
+    """Adapter wrapping tree-sitter TypeScript parser behind BaseParser contract."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="tree-sitter-typescript",
+            version="AST-walk",
+            supported_languages={"typescript"},
+            supported_extensions={".ts", ".tsx"},
+        )
+
+    def is_available(self) -> Tuple[bool, Optional[str]]:
+        try:
+            from parse_jsts import TS_PARSER, TSX_PARSER
+            if TS_PARSER is not None and TSX_PARSER is not None:
+                return True, None
+            return False, "TypeScript/TSX tree-sitter parser is not initialized"
+        except Exception as exc:  # noqa: BLE001
+            return False, f"Failed to load tree-sitter-typescript: {exc}"
+
+    def parse_file(self, filepath: str, repo_root: str) -> FileParseResult:
+        from parse_jsts import parse_js_ts_file
+        return parse_js_ts_file(filepath, repo_root)
+
+
 class ParserRegistry:
     """
     Centralized registry of language parsers.
@@ -195,6 +245,8 @@ class ParserRegistry:
 GLOBAL_PARSER_REGISTRY = ParserRegistry()
 GLOBAL_PARSER_REGISTRY.register(PythonParser())
 GLOBAL_PARSER_REGISTRY.register(JavaParser())
+GLOBAL_PARSER_REGISTRY.register(JavaScriptParser())
+GLOBAL_PARSER_REGISTRY.register(TypeScriptParser())
 
 
 def parse_repository(repo_root: str) -> List[FileParseResult]:
