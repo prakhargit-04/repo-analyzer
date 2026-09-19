@@ -23,6 +23,26 @@ from graph_builder import build_graph, graph_summary
 from health_score import compute_health_score
 from util import resolve_snapshot_id, try_git_head_sha, build_cache_key, CACHE_SCHEMA_VERSION, ANALYZER_VERSION, SCHEMA_VERSION
 
+# S14: optional DB persistence -- only imported when DATABASE_URL is set
+def _try_persist_to_db(result: dict) -> None:
+    """If DATABASE_URL env var is set, persist the analysis result to the database."""
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        return
+    try:
+        from db.engine import get_engine, create_all_tables, get_session_factory
+        from db.store import persist_analysis
+        engine = get_engine(db_url)
+        create_all_tables(engine)
+        SessionLocal = get_session_factory(engine)
+        with SessionLocal() as session:
+            run_id = persist_analysis(session, result)
+            session.commit()
+            print(f"[db] Persisted analysis run {run_id}", file=sys.stderr)
+    except Exception as exc:
+        # DB persistence failure must never break the pipeline output.
+        print(f"[db warning] Could not persist to database: {exc}", file=sys.stderr)
+
 
 def load_cache(cache_path: str) -> dict | None:
     """Loads cached result if present and valid; removes corrupted cache files safely."""
@@ -155,6 +175,7 @@ def run_pipeline(repo_url: str | None, local_path: str | None, commit_sha: str |
         }
 
         save_cache_atomic(cache_path, result)
+        _try_persist_to_db(result)
         return result
     finally:
         if cleanup_dir and os.path.exists(cleanup_dir):

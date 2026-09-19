@@ -5,3 +5,7 @@ lizard>=1.17
 bandit>=1.7
 semgrep>=1.17
 networkx>=3.0
+# S14: persistent database storage
+sqlalchemy>=2.0
+alembic>=1.13
+psycopg2-binary>=2.9
