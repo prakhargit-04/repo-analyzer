@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(__file__))
 from clone import clone_repository
-from parse_python import parse_repository
+from parser_interface import parse_repository
 from static_analysis import analyze_repository
 from graph_builder import build_graph, graph_summary
 from health_score import compute_health_score
