@@ -539,3 +539,196 @@ def test_unsupported_and_unavailable_status_handling():
     assert score["sub_scores"]["maintainability"] is None
     assert score["sub_scores"]["security"] is None
     assert score["status"] == "partial"
+
+
+# ---------------------------------------------------------------------------
+# 8. Session 7 Health Score v2 Test Suite
+# ---------------------------------------------------------------------------
+
+class TestHealthScoreV2:
+    """Comprehensive test suite for Health Score v2 requirements."""
+
+    def test_health_score_v2_all_components_successful(self):
+        """All 6 scoring components succeed -> score computed, complete status, no renormalization."""
+        analysis = {
+            "complexity": {"status": "success", "results": [{"rank": "A"}]},
+            "maintainability": {"status": "success", "results": [{"maintainability_index": 80.0}]},
+            "security": {"status": "success", "results": []},
+            "semgrep_findings": {"status": "success", "results": []},
+            "gitleaks_findings": {"status": "success", "results": []},
+            "osv_vulnerabilities": {"status": "success", "results": []},
+            "lizard_complexity": {"status": "success", "results": []},
+        }
+        res = compute_health_score(analysis)
+        assert res["composite_health_score"] == 95.0
+        assert res["status"] == "complete"
+        assert res["missing_components"] == []
+        assert res["weights_renormalized"] is False
+        assert res["weights_used"] == {
+            "complexity": 0.25,
+            "maintainability": 0.25,
+            "security": 0.20,
+            "sast": 0.15,
+            "secrets": 0.10,
+            "vulnerabilities": 0.05,
+        }
+        assert "lizard_complexity" in res["informational_analyzers"]
+
+    def test_health_score_v2_partial_analyzer(self):
+        """A partial analyzer contributes a numeric subscore but marks overall status partial."""
+        analysis = {
+            "complexity": {"status": "partial", "results": [{"rank": "B"}]},
+            "maintainability": {"status": "success", "results": [{"maintainability_index": 90.0}]},
+            "security": {"status": "success", "results": []},
+            "semgrep_findings": {"status": "success", "results": []},
+            "gitleaks_findings": {"status": "success", "results": []},
+            "osv_vulnerabilities": {"status": "success", "results": []},
+        }
+        res = compute_health_score(analysis)
+        assert res["sub_scores"]["complexity"] == 85.0
+        assert res["status"] == "partial"
+        assert res["component_statuses"]["complexity"] == "partial"
+
+    def test_health_score_v2_failed_analyzer(self):
+        """Failed component produces None subscore, triggers weight renormalization, status partial."""
+        analysis = {
+            "complexity": {"status": "success", "results": [{"rank": "A"}]},
+            "maintainability": {"status": "failed", "results": []},
+            "security": {"status": "success", "results": []},
+            "semgrep_findings": {"status": "success", "results": []},
+            "gitleaks_findings": {"status": "success", "results": []},
+            "osv_vulnerabilities": {"status": "success", "results": []},
+        }
+        res = compute_health_score(analysis)
+        assert res["sub_scores"]["maintainability"] is None
+        assert "maintainability" in res["missing_components"]
+        assert res["weights_renormalized"] is True
+        assert res["status"] == "partial"
+        assert abs(sum(res["weights_used"].values()) - 1.0) < 1e-4
+
+    def test_health_score_v2_unsupported_analyzer(self):
+        """Unsupported component (e.g. no dependency manifests) yields None subscore, partial status."""
+        analysis = {
+            "complexity": {"status": "success", "results": [{"rank": "A"}]},
+            "maintainability": {"status": "success", "results": [{"maintainability_index": 90.0}]},
+            "security": {"status": "success", "results": []},
+            "semgrep_findings": {"status": "success", "results": []},
+            "gitleaks_findings": {"status": "success", "results": []},
+            "osv_vulnerabilities": {"status": "unsupported", "results": []},
+        }
+        res = compute_health_score(analysis)
+        assert res["sub_scores"]["vulnerabilities"] is None
+        assert "vulnerabilities" in res["missing_components"]
+        assert res["weights_renormalized"] is True
+        assert res["status"] == "partial"
+
+    def test_health_score_v2_unavailable_analyzer(self):
+        """Unavailable component (e.g. gitleaks not installed) yields None subscore, not a fake 100."""
+        analysis = {
+            "complexity": {"status": "success", "results": [{"rank": "A"}]},
+            "maintainability": {"status": "success", "results": [{"maintainability_index": 90.0}]},
+            "security": {"status": "success", "results": []},
+            "semgrep_findings": {"status": "success", "results": []},
+            "gitleaks_findings": {"status": "unavailable", "results": []},
+            "osv_vulnerabilities": {"status": "success", "results": []},
+        }
+        res = compute_health_score(analysis)
+        assert res["sub_scores"]["secrets"] is None
+        assert "secrets" in res["missing_components"]
+        assert res["status"] == "partial"
+
+    def test_health_score_v2_multiple_unavailable_components(self):
+        """Multiple unavailable components: remaining weights renormalized to sum to 1.0."""
+        analysis = {
+            "complexity": {"status": "success", "results": [{"rank": "A"}]},
+            "maintainability": {"status": "success", "results": [{"maintainability_index": 100.0}]},
+            "security": {"status": "success", "results": []},
+            "semgrep_findings": {"status": "unavailable", "results": []},
+            "gitleaks_findings": {"status": "unavailable", "results": []},
+            "osv_vulnerabilities": {"status": "unavailable", "results": []},
+        }
+        res = compute_health_score(analysis)
+        assert res["missing_components"] == ["sast", "secrets", "vulnerabilities"]
+        assert abs(sum(res["weights_used"].values()) - 1.0) < 1e-4
+        assert res["composite_health_score"] == 100.0
+
+    def test_health_score_v2_weight_renormalization(self):
+        """Verify exact renormalized weight values when some components are missing."""
+        analysis = {
+            "complexity": {"status": "success", "results": [{"rank": "A"}]},
+            "maintainability": {"status": "success", "results": [{"maintainability_index": 100.0}]},
+            "security": {"status": "success", "results": []},
+            "semgrep_findings": {"status": "failed", "results": []},
+            "gitleaks_findings": {"status": "failed", "results": []},
+            "osv_vulnerabilities": {"status": "failed", "results": []},
+        }
+        res = compute_health_score(analysis)
+        assert res["weights_used"]["complexity"] == 0.3571
+        assert res["weights_used"]["maintainability"] == 0.3571
+        assert res["weights_used"]["security"] == 0.2857
+        assert res["weights_renormalized"] is True
+
+    def test_health_score_v2_no_usable_scoring_components(self):
+        """All scoring components failed -> score is None, status is failed."""
+        analysis = {
+            "complexity": {"status": "failed", "results": []},
+            "maintainability": {"status": "failed", "results": []},
+            "security": {"status": "failed", "results": []},
+            "semgrep_findings": {"status": "failed", "results": []},
+            "gitleaks_findings": {"status": "failed", "results": []},
+            "osv_vulnerabilities": {"status": "failed", "results": []},
+        }
+        res = compute_health_score(analysis)
+        assert res["composite_health_score"] is None
+        assert res["status"] == "failed"
+        assert len(res["missing_components"]) == 6
+
+    def test_health_score_v2_deterministic_scoring(self):
+        """Repeated computation yields identical result dictionaries."""
+        analysis = {
+            "complexity": {"status": "success", "results": [{"rank": "B"}]},
+            "maintainability": {"status": "success", "results": [{"maintainability_index": 75.0}]},
+            "security": {"status": "success", "results": [{"severity": "HIGH"}]},
+            "semgrep_findings": {"status": "success", "results": [{"severity": "WARNING"}]},
+            "gitleaks_findings": {"status": "success", "results": [{"rule_id": "api-key"}]},
+            "osv_vulnerabilities": {"status": "success", "results": [{"vulnerability_id": "CVE-1"}]},
+        }
+        res1 = compute_health_score(analysis)
+        res2 = compute_health_score(analysis)
+        assert res1 == res2
+
+    def test_health_score_v2_backward_compatibility(self):
+        """Legacy 3-component input dictionary uses legacy weights (0.35, 0.35, 0.30)."""
+        analysis = {
+            "complexity": {"status": "success", "results": [{"rank": "A"}]},
+            "maintainability": {"status": "success", "results": [{"maintainability_index": 100.0}]},
+            "security": {"status": "success", "results": []},
+        }
+        res = compute_health_score(analysis)
+        assert res["composite_health_score"] == 100.0
+        assert res["weights_used"] == {"complexity": 0.35, "maintainability": 0.35, "security": 0.30}
+        assert res["weights_renormalized"] is False
+
+    def test_health_score_v2_lizard_is_informational_only(self):
+        """Lizard findings do not change composite score or scoring weights."""
+        analysis_without_lizard = {
+            "complexity": {"status": "success", "results": [{"rank": "A"}]},
+            "maintainability": {"status": "success", "results": [{"maintainability_index": 80.0}]},
+            "security": {"status": "success", "results": []},
+            "semgrep_findings": {"status": "success", "results": []},
+            "gitleaks_findings": {"status": "success", "results": []},
+            "osv_vulnerabilities": {"status": "success", "results": []},
+        }
+        analysis_with_lizard = dict(analysis_without_lizard)
+        analysis_with_lizard["lizard_complexity"] = {
+            "status": "success",
+            "results": [{"cyclomatic_complexity": 50, "nloc": 100}],
+        }
+
+        res_without = compute_health_score(analysis_without_lizard)
+        res_with = compute_health_score(analysis_with_lizard)
+
+        assert res_without["composite_health_score"] == res_with["composite_health_score"]
+        assert res_without["weights_used"] == res_with["weights_used"]
+        assert "lizard_complexity" in res_with["informational_analyzers"]
+

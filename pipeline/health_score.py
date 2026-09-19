@@ -1,140 +1,125 @@
 """
-Composite Health Score -- explicit formula, weights, normalization, AND
-explicit failure handling. A failed tool must never look like a clean
-repository: if a sub-score's source data has status "failed", that
-sub-score is None and excluded from the composite (with weights
-renormalized across whatever remains, not silently treated as zero
-impact or perfect impact). The composite is then honestly labeled
-"complete" or "partial" so nobody downstream mistakes a partial result
-for a full one.
+Composite Health Score v2 -- explicit formula, weights, normalization, AND
+explicit failure handling across all analyzers.
 
--------------------------------------------------------------------------
-OVERALL STATUS -- "complete" requires EVERY component to be "success"
--------------------------------------------------------------------------
-A component with status "partial" can still produce a usable sub-score
-(computed from whatever results it did get) -- but that sub-score being
-present is not the same claim as the analysis being complete. A previous
-version of this function only looked at whether a sub-score was None (i.e.
-whether the WEIGHT needed renormalizing), which meant a "partial" complexity
-result that still returned a number caused the overall status to say
-"complete" -- true for the arithmetic, false for what actually happened.
-Overall status is now computed from the underlying component statuses
-directly: "complete" iff complexity/maintainability/security are ALL
-"success"; "failed" iff none of them produced a usable score; "partial"
-otherwise (covers both "some missing" and "some present but not fully
-successful").
+Scoring components (Health Score v2):
+1. complexity (Radon Cyclomatic Complexity)     - Weight: 0.25
+2. maintainability (Radon Maintainability Index)- Weight: 0.25
+3. security (Bandit Security Scanner)          - Weight: 0.20
+4. sast (Semgrep Static Security Analysis)      - Weight: 0.15
+5. secrets (Gitleaks Secret Detection)          - Weight: 0.10
+6. vulnerabilities (OSV Dependency Scanner)     - Weight: 0.05
 
--------------------------------------------------------------------------
-SCOPE DECISION (previous version was inconsistent about this)
--------------------------------------------------------------------------
-"Health" here means PRODUCTION CODE health, not the whole repository.
-Test files are excluded from all three sub-scores by the same rule
-(util.is_test_file), enforced upstream in static_analysis.py before any
-of these functions see the data. This is a real design decision, not a
-default: test code has different quality norms (e.g. `assert` is normal,
-some duplication is normal, very high cyclomatic complexity in a
-parametrized test is normal) and blending it into "how healthy is this
-codebase" would penalize repos with good test coverage relative to repos
-with none -- backwards incentive. Test file counts ARE still reported
-(see static_analysis.py's `test_files_excluded`) so nothing is hidden.
+Informational-only analyzers:
+- lizard_complexity: Language-agnostic cyclomatic complexity across 30+ languages.
+  Informational only to avoid double-counting complexity with Radon CC.
 
--------------------------------------------------------------------------
-SUB-SCORES (each normalized to 0-100, higher = healthier)
--------------------------------------------------------------------------
-1. Complexity sub-score (weight 0.35)
-   Source: radon cyclomatic-complexity rank per function (A best - F worst).
-   Rank -> points:  A=100  B=85  C=70  D=50  E=30  F=10
-   Sub-score = unweighted average of per-function points.
+Backward compatibility:
+- If input analysis contains ONLY legacy 3 components ("complexity",
+  "maintainability", "security"), default weights of 0.35, 0.35, 0.30 are used,
+  producing identical composite scores to Health Score v1.
 
-2. Maintainability sub-score (weight 0.35)
-   Source: radon Maintainability Index (already 0-100 by construction).
-   Sub-score = mean MI across files, clipped to [0, 100].
-
-3. Security sub-score (weight 0.30)
-   Source: bandit issue list (production files only).
-   Start at 100, subtract per issue: HIGH -15, MEDIUM -7, LOW -2. Floor 0.
-
--------------------------------------------------------------------------
-COMPOSITE AND FAILURE HANDLING
--------------------------------------------------------------------------
-composite = sum(weight_i * subscore_i for available i) / sum(weight_i for available i)
-
-If ALL sub-scores are unavailable, the composite is None with status
-"failed" -- there is no such thing as a health score computed from zero
-data, and this function will not pretend otherwise.
-
-Resolution confidence from the call graph is reported alongside the
-health score elsewhere in the pipeline output, never blended into it --
-that measures analysis coverage, not code quality.
-
--------------------------------------------------------------------------
-VALIDATION PLAN (to run in the evaluation phase, Month 4+)
--------------------------------------------------------------------------
-- Assemble a small labeled set of repos with known quality reputations.
-- Check the composite score ranks them as expected (Spearman correlation
-  against a human-panel ranking).
-- Run a weight-sensitivity sweep (+-10% per weight); if the labeled-set
-  ranking flips, the weights are too brittle and need revisiting.
-- Publish the labeled set, correlation number, and sweep result alongside
-  the score itself so it is falsifiable, not just asserted.
+Status semantics:
+- "complete": every expected scoring component produced status "success".
+- "failed": no scoring component produced a usable numeric subscore.
+- "partial": at least one scoring component produced a numeric subscore, but at least
+  one scoring component was partial, failed, unsupported, or unavailable.
 """
 from __future__ import annotations
+from typing import Dict, Any, Optional
 
 RANK_POINTS = {"A": 100, "B": 85, "C": 70, "D": 50, "E": 30, "F": 10}
-SEVERITY_PENALTY = {"HIGH": 15, "MEDIUM": 7, "LOW": 2}
-WEIGHTS = {"complexity": 0.35, "maintainability": 0.35, "security": 0.30}
+BANDIT_SEVERITY_PENALTY = {"HIGH": 15, "MEDIUM": 7, "LOW": 2}
+SEMGREP_SEVERITY_PENALTY = {"HIGH": 15, "ERROR": 15, "WARNING": 15, "MEDIUM": 5, "INFO": 5}
+
+# Health Score v2 6-component weights
+DEFAULT_WEIGHTS_V2 = {
+    "complexity": 0.25,
+    "maintainability": 0.25,
+    "security": 0.20,
+    "sast": 0.15,
+    "secrets": 0.10,
+    "vulnerabilities": 0.05,
+}
+
+# Legacy Health Score v1 3-component weights
+LEGACY_WEIGHTS = {
+    "complexity": 0.35,
+    "maintainability": 0.35,
+    "security": 0.30,
+}
+
 VALID_COMPONENT_STATUSES = {"success", "partial", "failed", "unsupported", "unavailable"}
 
 
-def _complexity_subscore(block: dict):
+def _complexity_subscore(block: dict) -> Optional[float]:
     if block["status"] not in VALID_COMPONENT_STATUSES:
         raise ValueError(f"Unknown analysis status: {block['status']!r}")
     if block["status"] in ("failed", "unsupported", "unavailable"):
         return None
-    results = block["results"]
+    results = block.get("results", [])
     if not results:
-        return 100.0  # genuinely no functions found -- success status confirms this, not a failure hiding as this
-    points = [RANK_POINTS.get(r["rank"], 50) for r in results]
+        return 100.0
+    points = [RANK_POINTS.get(r.get("rank", "C"), 50) for r in results]
     return round(sum(points) / len(points), 2)
 
 
-def _maintainability_subscore(block: dict):
+def _maintainability_subscore(block: dict) -> Optional[float]:
     if block["status"] not in VALID_COMPONENT_STATUSES:
         raise ValueError(f"Unknown analysis status: {block['status']!r}")
     if block["status"] in ("failed", "unsupported", "unavailable"):
         return None
-    results = block["results"]
+    results = block.get("results", [])
     if not results:
         return 100.0
-    values = [max(0.0, min(100.0, r["maintainability_index"])) for r in results]
+    values = [max(0.0, min(100.0, float(r.get("maintainability_index", 100.0)))) for r in results]
     return round(sum(values) / len(values), 2)
 
 
-def _security_subscore(block: dict):
+def _security_subscore(block: dict) -> Optional[float]:
     if block["status"] not in VALID_COMPONENT_STATUSES:
         raise ValueError(f"Unknown analysis status: {block['status']!r}")
     if block["status"] in ("failed", "unsupported", "unavailable"):
         return None
     score = 100.0
-    for issue in block["results"]:
-        score -= SEVERITY_PENALTY.get(issue["severity"].upper(), 2)
+    for issue in block.get("results", []):
+        score -= BANDIT_SEVERITY_PENALTY.get(str(issue.get("severity", "")).upper(), 2)
+    return round(max(0.0, score), 2)
+
+
+def _sast_subscore(block: dict) -> Optional[float]:
+    if block["status"] not in VALID_COMPONENT_STATUSES:
+        raise ValueError(f"Unknown analysis status: {block['status']!r}")
+    if block["status"] in ("failed", "unsupported", "unavailable"):
+        return None
+    score = 100.0
+    for finding in block.get("results", []):
+        sev = str(finding.get("severity", "INFO")).upper()
+        score -= SEMGREP_SEVERITY_PENALTY.get(sev, 5)
+    return round(max(0.0, score), 2)
+
+
+def _secrets_subscore(block: dict) -> Optional[float]:
+    if block["status"] not in VALID_COMPONENT_STATUSES:
+        raise ValueError(f"Unknown analysis status: {block['status']!r}")
+    if block["status"] in ("failed", "unsupported", "unavailable"):
+        return None
+    findings = block.get("results", [])
+    score = 100.0 - (25.0 * len(findings))
+    return round(max(0.0, score), 2)
+
+
+def _vulnerabilities_subscore(block: dict) -> Optional[float]:
+    if block["status"] not in VALID_COMPONENT_STATUSES:
+        raise ValueError(f"Unknown analysis status: {block['status']!r}")
+    if block["status"] in ("failed", "unsupported", "unavailable"):
+        return None
+    findings = block.get("results", [])
+    score = 100.0 - (20.0 * len(findings))
     return round(max(0.0, score), 2)
 
 
 def _determine_overall_status(component_statuses: dict, available: dict) -> str:
-    """
-    "complete" requires every component to have actually succeeded -- not
-    just "every component produced a non-None score". A "partial" component
-    can still produce a usable number (computed from whatever results it
-    did get before the failure), and a prior version of this function only
-    checked whether scores were None, so a partial-but-numeric result was
-    reported as an overall "complete" -- correct arithmetic, false claim.
-
-    "failed" iff nothing usable came back from any component at all.
-    "partial" covers both "some component fully missing" and "some
-    component present but not fully successful" -- both mean the caller
-    should not treat this result as a full, trustworthy analysis.
-    """
     if not available:
         return "failed"
     if set(component_statuses.values()) == {"success"}:
@@ -143,21 +128,48 @@ def _determine_overall_status(component_statuses: dict, available: dict) -> str:
 
 
 def compute_health_score(analysis: dict) -> dict:
-    component_statuses = {
-        "complexity": analysis["complexity"]["status"],
-        "maintainability": analysis["maintainability"]["status"],
-        "security": analysis["security"]["status"],
+    # Determine whether analysis contains new v2 analyzers or is legacy v1
+    has_v2_keys = any(
+        k in analysis
+        for k in ("semgrep_findings", "gitleaks_findings", "osv_vulnerabilities")
+    )
+
+    if has_v2_keys:
+        expected_components = {
+            "complexity": analysis.get("complexity", {"status": "unavailable"}),
+            "maintainability": analysis.get("maintainability", {"status": "unavailable"}),
+            "security": analysis.get("security", {"status": "unavailable"}),
+            "sast": analysis.get("semgrep_findings", {"status": "unavailable"}),
+            "secrets": analysis.get("gitleaks_findings", {"status": "unavailable"}),
+            "vulnerabilities": analysis.get("osv_vulnerabilities", {"status": "unavailable"}),
+        }
+        weights_config = DEFAULT_WEIGHTS_V2
+    else:
+        expected_components = {
+            "complexity": analysis.get("complexity", {"status": "unavailable"}),
+            "maintainability": analysis.get("maintainability", {"status": "unavailable"}),
+            "security": analysis.get("security", {"status": "unavailable"}),
+        }
+        weights_config = LEGACY_WEIGHTS
+
+    component_statuses = {k: comp.get("status", "unavailable") for k, comp in expected_components.items()}
+
+    subs: Dict[str, Optional[float]] = {
+        "complexity": _complexity_subscore(expected_components["complexity"]),
+        "maintainability": _maintainability_subscore(expected_components["maintainability"]),
+        "security": _security_subscore(expected_components["security"]),
     }
+    if has_v2_keys:
+        subs["sast"] = _sast_subscore(expected_components["sast"])
+        subs["secrets"] = _secrets_subscore(expected_components["secrets"])
+        subs["vulnerabilities"] = _vulnerabilities_subscore(expected_components["vulnerabilities"])
 
-    comp = _complexity_subscore(analysis["complexity"])
-    maint = _maintainability_subscore(analysis["maintainability"])
-    sec = _security_subscore(analysis["security"])
-
-    subs = {"complexity": comp, "maintainability": maint, "security": sec}
     available = {k: v for k, v in subs.items() if v is not None}
     missing = [k for k, v in subs.items() if v is None]
 
     overall_status = _determine_overall_status(component_statuses, available)
+
+    informational_analyzers = ["lizard_complexity"] if "lizard_complexity" in analysis else []
 
     if not available:
         return {
@@ -166,11 +178,18 @@ def compute_health_score(analysis: dict) -> dict:
             "sub_scores": subs,
             "component_statuses": component_statuses,
             "missing_components": missing,
-            "reason": "All underlying analysis tools failed; no health score can be computed from zero data.",
+            "weights_used": {},
+            "weights_renormalized": True,
+            "formula": "Weighted average of available sub-scores; weights renormalized to sum to 1.0 if any component is missing (never treated as 0 or 100).",
+            "informational_analyzers": informational_analyzers,
+            "reason": "All underlying scoring analysis tools failed or were unavailable; no health score can be computed from zero data.",
+            "scope_policy": analysis.get("scope_policy", "production_code_only"),
+            "note": "Informational analyzers (such as lizard_complexity) are captured separately and do not contribute to scoring calculation.",
         }
 
-    weight_sum = sum(WEIGHTS[k] for k in available)
-    composite = round(sum(WEIGHTS[k] * v for k, v in available.items()) / weight_sum, 2)
+    weight_sum = sum(weights_config[k] for k in available)
+    composite = round(sum(weights_config[k] * v for k, v in available.items()) / weight_sum, 2)
+    weights_used = {k: round(weights_config[k] / weight_sum, 4) for k in available}
 
     return {
         "composite_health_score": composite,
@@ -178,16 +197,11 @@ def compute_health_score(analysis: dict) -> dict:
         "sub_scores": subs,
         "component_statuses": component_statuses,
         "missing_components": missing,
-        "weights_used": {k: round(WEIGHTS[k] / weight_sum, 4) for k in available},
-        "weights_renormalized": missing != [],
-        "formula": "weighted average of available sub-scores; weights renormalized "
-                   "to sum to 1 if any component is missing (never treated as 0 or 100)",
+        "weights_used": weights_used,
+        "weights_renormalized": len(missing) > 0 or len(available) < len(weights_config),
+        "formula": "Weighted average of available sub-scores (complexity: 0.25, maintainability: 0.25, security: 0.20, sast: 0.15, secrets: 0.10, vulnerabilities: 0.05); weights renormalized to sum to 1.0 if any component is unavailable/failed/unsupported (never treated as 0 or 100).",
+        "informational_analyzers": informational_analyzers,
         "scope_policy": analysis.get("scope_policy", "production_code_only"),
-        "note": "Call-graph resolution confidence is reported separately "
-                "(graph_builder.graph_summary) and intentionally NOT blended "
-                "into this score -- it measures analysis coverage, not code quality. "
-                "'status' reflects whether EVERY component fully succeeded, not "
-                "merely whether a numeric score could be computed -- a 'partial' "
-                "component can still contribute a number without the overall "
-                "result being 'complete'.",
+        "note": "Call-graph resolution confidence is reported separately (graph_builder.graph_summary) and intentionally NOT blended into this score. Lizard complexity is informational only and excluded from scoring to prevent double-counting with Radon CC. 'status' reflects whether EVERY scoring component fully succeeded.",
     }
+

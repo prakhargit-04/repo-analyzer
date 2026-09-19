@@ -1288,92 +1288,106 @@ class OSVAnalyzer(BaseAnalyzer):
 _OSV_ANALYZER = OSVAnalyzer()
 
 
-def analyze_repository(repo_root: str, py_files_rel: list) -> dict:
+class AnalyzerOrchestrator:
     """
-    py_files_rel: ALL python files found (test + production). This function
-    partitions them itself using the single shared is_test_file() definition
-    so complexity/maintainability/security all see the identical split.
-
-    Lizard complexity runs over production files and is language-agnostic;
-    it supplements (not replaces) the Radon per-file complexity already
-    captured for Python.
-
-    Semgrep runs over production files using the Semgrep-managed OSS ruleset;
-    it supplements (not replaces) Bandit's Python-specific security analysis.
-
-    Gitleaks runs over production files to detect hardcoded secrets without
-    exposing raw secret strings in output.
-
-    OSV.dev runs dependency vulnerability scanning against repository manifests.
+    Centralized orchestration layer for analyzer execution across the pipeline.
+    Coordinates Python-specific legacy analyzers (Radon CC, Radon MI, Bandit) and
+    BaseAnalyzer instances (Lizard, Semgrep, Gitleaks, OSV.dev).
     """
-    if not py_files_rel:
-        return {
-            "scope_policy": "production_code_only",
-            "production_files_analyzed": 0,
-            "test_files_excluded": 0,
-            "complexity": {"status": "unsupported", "results": []},
-            "maintainability": {"status": "unsupported", "results": []},
-            "security": {"status": "unsupported", "results": []},
-            "lizard_complexity": {"status": "unsupported", "results": []},
-            "semgrep_findings": {"status": "unsupported", "results": []},
-            "gitleaks_findings": {"status": "unsupported", "results": []},
-            "osv_vulnerabilities": {"status": "unsupported", "results": []},
+
+    def __init__(self, repo_root: str, py_files_rel: List[str]) -> None:
+        self.repo_root = repo_root
+        self.py_files_rel = py_files_rel
+        # Normalize files to relative paths first, safely handling both relative and absolute inputs
+        self.rel_files = [
+            os.path.relpath(f, repo_root).replace("\\", "/") if os.path.isabs(f) else f.replace("\\", "/")
+            for f in py_files_rel
+        ]
+        self.prod_files = [f for f in self.rel_files if not is_test_file(f)]
+        self.test_files = [f for f in self.rel_files if is_test_file(f)]
+        self.abs_prod_files = [
+            os.path.normpath(os.path.join(repo_root, f))
+            for f in self.prod_files
+        ]
+
+    def run_radon(self) -> tuple[dict, dict]:
+        complexity_results, maintainability_results = [], []
+        any_complexity_failure = any_maintainability_failure = False
+
+        for rel in self.prod_files:
+            abs_path = os.path.join(self.repo_root, rel)
+            status, results = run_radon_complexity(abs_path, rel)
+            if status == "failed":
+                any_complexity_failure = True
+            complexity_results.extend(results)
+
+            status, mi = run_radon_maintainability(abs_path, rel)
+            if status == "failed":
+                any_maintainability_failure = True
+            elif mi:
+                maintainability_results.append(mi)
+
+        complexity_status = "success"
+        if any_complexity_failure:
+            complexity_status = "partial" if complexity_results else "failed"
+        maintainability_status = "success"
+        if any_maintainability_failure:
+            maintainability_status = "partial" if maintainability_results else "failed"
+
+        comp_dict = {"status": complexity_status, "results": [asdict(c) for c in complexity_results]}
+        maint_dict = {"status": maintainability_status, "results": [asdict(m) for m in maintainability_results]}
+        return comp_dict, maint_dict
+
+    def run_bandit(self) -> dict:
+        security_status, security_results = run_bandit(self.repo_root, self.prod_files)
+        return {"status": security_status, "results": [asdict(s) for s in security_results]}
+
+    def execute_all(self) -> dict:
+        if not self.py_files_rel:
+            return {
+                "scope_policy": "production_code_only",
+                "production_files_analyzed": 0,
+                "test_files_excluded": 0,
+                "complexity": {"status": "unsupported", "results": []},
+                "maintainability": {"status": "unsupported", "results": []},
+                "security": {"status": "unsupported", "results": []},
+                "lizard_complexity": {"status": "unsupported", "results": []},
+                "semgrep_findings": {"status": "unsupported", "results": []},
+                "gitleaks_findings": {"status": "unsupported", "results": []},
+                "osv_vulnerabilities": {"status": "unsupported", "results": []},
+            }
+
+        comp_dict, maint_dict = self.run_radon()
+        sec_dict = self.run_bandit()
+
+        base_analyzers: Dict[str, BaseAnalyzer] = {
+            "lizard_complexity": _LIZARD_ANALYZER,
+            "semgrep_findings": _SEMGREP_ANALYZER,
+            "gitleaks_findings": _GITLEAKS_ANALYZER,
+            "osv_vulnerabilities": _OSV_ANALYZER,
         }
 
-    prod_files = [f for f in py_files_rel if not is_test_file(f)]
-    test_files = [f for f in py_files_rel if is_test_file(f)]
+        analysis_output = {
+            "scope_policy": "production_code_only",
+            "production_files_analyzed": len(self.prod_files),
+            "test_files_excluded": len(self.test_files),
+            "complexity": comp_dict,
+            "maintainability": maint_dict,
+            "security": sec_dict,
+        }
 
-    complexity_results, maintainability_results = [], []
-    any_complexity_failure = any_maintainability_failure = False
+        for key, analyzer in base_analyzers.items():
+            result = analyzer.analyze(self.repo_root, self.abs_prod_files)
+            analysis_output[key] = result.to_dict()
 
-    for rel in prod_files:
-        abs_path = os.path.join(repo_root, rel)
-        status, results = run_radon_complexity(abs_path, rel)
-        if status == "failed":
-            any_complexity_failure = True
-        complexity_results.extend(results)
+        return analysis_output
 
-        status, mi = run_radon_maintainability(abs_path, rel)
-        if status == "failed":
-            any_maintainability_failure = True
-        elif mi:
-            maintainability_results.append(mi)
 
-    complexity_status = "success"
-    if any_complexity_failure:
-        complexity_status = "partial" if complexity_results else "failed"
-    maintainability_status = "success"
-    if any_maintainability_failure:
-        maintainability_status = "partial" if maintainability_results else "failed"
+def analyze_repository(repo_root: str, py_files_rel: list) -> dict:
+    """
+    py_files_rel: ALL python files found (test + production).
+    Orchestrates Radon, Bandit, Lizard, Semgrep, Gitleaks, and OSV analyzers cleanly.
+    """
+    orchestrator = AnalyzerOrchestrator(repo_root, py_files_rel)
+    return orchestrator.execute_all()
 
-    security_status, security_results = run_bandit(repo_root, prod_files)
-
-    # --- Lizard (language-agnostic cyclomatic complexity) ---
-    abs_prod_files = [os.path.join(repo_root, f) for f in prod_files]
-    lizard_result = _LIZARD_ANALYZER.analyze(repo_root, abs_prod_files)
-    lizard_dict = lizard_result.to_dict()
-
-    # --- Semgrep (SAST pattern-based security/bug-finding) ---
-    semgrep_result = _SEMGREP_ANALYZER.analyze(repo_root, abs_prod_files)
-    semgrep_dict = semgrep_result.to_dict()
-
-    # --- Gitleaks (secret detection) ---
-    gitleaks_result = _GITLEAKS_ANALYZER.analyze(repo_root, abs_prod_files)
-    gitleaks_dict = gitleaks_result.to_dict()
-
-    # --- OSV.dev (dependency vulnerability scanning) ---
-    osv_result = _OSV_ANALYZER.analyze(repo_root, abs_prod_files)
-    osv_dict = osv_result.to_dict()
-
-    return {
-        "scope_policy": "production_code_only",
-        "production_files_analyzed": len(prod_files),
-        "test_files_excluded": len(test_files),
-        "complexity": {"status": complexity_status, "results": [asdict(c) for c in complexity_results]},
-        "maintainability": {"status": maintainability_status, "results": [asdict(m) for m in maintainability_results]},
-        "security": {"status": security_status, "results": [asdict(s) for s in security_results]},
-        "lizard_complexity": lizard_dict,
-        "semgrep_findings": semgrep_dict,
-        "gitleaks_findings": gitleaks_dict,
-        "osv_vulnerabilities": osv_dict,
-    }

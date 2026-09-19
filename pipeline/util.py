@@ -24,7 +24,7 @@ IGNORED_SNAPSHOT_DIRS = {".git", "__pycache__", ".venv", "venv", "node_modules",
 # analyzer did.
 CACHE_SCHEMA_VERSION = "v4"  # bumped: Session 1 schema freeze v1.0.0
 SCHEMA_VERSION = "1.0.0"
-ANALYZER_VERSION = "0.6.0"  # bumped: Session 6 — OSV integration adds osv_vulnerabilities to output
+ANALYZER_VERSION = "0.7.0"  # bumped: Session 7 — Health Score v2 and central analyzer orchestration
 
 
 def is_test_file(rel_path: str) -> bool:
