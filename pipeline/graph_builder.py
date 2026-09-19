@@ -170,7 +170,9 @@ def build_graph(parse_results: list, static_analysis: dict | None = None) -> nx.
 
             # 3. Dotted module map or bare name lookup
             if not target_file:
-                mapped = file_module_map.get(imp_str)
+                parts = imp_str.rsplit(".", 1)
+                mod_cand = parts[0] if len(parts) > 1 else imp_str
+                mapped = file_module_map.get(imp_str) or file_module_map.get(mod_cand)
                 if mapped and mapped != norm_file:
                     target_file = mapped
                     confidence = "high_confidence"
@@ -179,50 +181,266 @@ def build_graph(parse_results: list, static_analysis: dict | None = None) -> nx.
                 g.add_edge(norm_file, target_file, relation="depends_on", confidence=confidence,
                            imported_module=imp_str, provenance="graph_builder:module_dependency_resolver")
 
-    # --- Layer 3: Best-effort call resolution ---
-    same_file_func_index: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
-    for f in all_functions.values():
-        same_file_func_index[_normalize_path(f.file)][f.name].append(f.id)
+    # --- Layer 3: Advanced Call Resolution Engine ---
+    file_imports_map: dict[str, dict[str, ImportEdge]] = defaultdict(dict)
+    file_depends_on_map: dict[str, dict[str, str]] = defaultdict(dict)
+
+    for u, v, d in g.edges(data=True):
+        if d.get("relation") == "depends_on":
+            file_depends_on_map[u][d.get("imported_module", "")] = v
+
+    for fr in parse_results:
+        norm_file = _normalize_path(fr.file)
+        for imp in fr.imports:
+            bound_name = imp.alias or imp.imported.split(".")[-1]
+            file_imports_map[norm_file][bound_name] = imp
+            if imp.alias:
+                file_imports_map[norm_file][imp.imported] = imp
+
+    class_parents_map: dict[str, list[str]] = defaultdict(list)
+    for u, v, d in g.edges(data=True):
+        if d.get("relation") == "inherits":
+            class_parents_map[u].append(v)
+
+    class_methods_map: dict[str, dict[str, list[FunctionNode]]] = defaultdict(lambda: defaultdict(list))
+    for fn in all_functions.values():
+        if fn.class_owner:
+            norm_file = _normalize_path(fn.file)
+            for cls_id, cls in all_classes.items():
+                if _normalize_path(cls.file) == norm_file and cls.name == fn.class_owner:
+                    class_methods_map[cls_id][fn.name].append(fn)
+
+    file_func_map: dict[str, dict[str, list[FunctionNode]]] = defaultdict(lambda: defaultdict(list))
+    for fn in all_functions.values():
+        file_func_map[_normalize_path(fn.file)][fn.name].append(fn)
 
     for fn_id, fn in all_functions.items():
         norm_file = _normalize_path(fn.file)
+        enclosing_cls_id = None
+        if fn.class_owner:
+            for cls_id, cls in all_classes.items():
+                if _normalize_path(cls.file) == norm_file and cls.name == fn.class_owner:
+                    enclosing_cls_id = cls_id
+                    break
+
         for raw_call in fn.calls:
-            bare_name = raw_call.split(".")[-1]
-            is_attribute_call = "." in raw_call
+            resolved_target = None
+            resolved_confidence = None
+            resolved_reason = None
+            resolved_provenance = "graph_builder:call_resolution_heuristic"
 
-            same_file_matches = [fid for fid in same_file_func_index[norm_file].get(bare_name, []) if fid != fn_id]
-            all_matches = func_name_index.get(bare_name, [])
+            raw_strip = raw_call.strip()
+            bare_name = raw_strip.split(".")[-1]
 
-            if is_attribute_call:
-                g.add_edge(fn_id, f"unresolved_call::{raw_call}", relation="calls",
-                           confidence="flagged", reason="attribute_call_unknown_receiver_type",
-                           raw_call=raw_call, provenance="graph_builder:call_resolution_heuristic")
-                continue
+            # 1. Constructor / `new` Expressions
+            if raw_strip.startswith("new "):
+                target_cls_name = raw_strip[4:].strip().split(".")[-1]
+                if target_cls_name in file_imports_map[norm_file]:
+                    imp = file_imports_map[norm_file][target_cls_name]
+                    target_file = file_depends_on_map[norm_file].get(imp.imported) or file_module_map.get(imp.imported)
+                    if target_file:
+                        for cid, cls in all_classes.items():
+                            if _normalize_path(cls.file) == target_file and cls.name == target_cls_name:
+                                resolved_target = cid
+                                resolved_confidence = "high_confidence"
+                                resolved_provenance = "graph_builder:constructor_import_resolution"
+                                break
 
-            name_also_imported = bare_name in file_import_names.get(norm_file, set())
+                if not resolved_target:
+                    same_file_cls = [cid for cid, cls in all_classes.items() if _normalize_path(cls.file) == norm_file and cls.name == target_cls_name]
+                    if len(same_file_cls) == 1:
+                        resolved_target = same_file_cls[0]
+                        resolved_confidence = "high_confidence"
+                        resolved_provenance = "graph_builder:constructor_same_file_resolution"
 
-            if len(same_file_matches) > 1:
-                g.add_edge(fn_id, f"ambiguous_call::{bare_name}", relation="calls",
-                           confidence="flagged", reason="duplicate_same_file_candidates",
-                           raw_call=raw_call, provenance="graph_builder:call_resolution_heuristic")
-            elif len(same_file_matches) == 1 and not name_also_imported:
-                g.add_edge(fn_id, same_file_matches[0], relation="calls", confidence="high_confidence",
-                           raw_call=raw_call, provenance="graph_builder:call_resolution_heuristic")
-            elif len(same_file_matches) == 1 and name_also_imported:
-                g.add_edge(fn_id, f"ambiguous_call::{bare_name}", relation="calls",
-                           confidence="flagged", reason="name_collides_with_local_import",
-                           raw_call=raw_call, provenance="graph_builder:call_resolution_heuristic")
-            elif len(all_matches) == 1 and all_matches[0] != fn_id:
-                g.add_edge(fn_id, all_matches[0], relation="calls", confidence="low_confidence",
-                           raw_call=raw_call, provenance="graph_builder:call_resolution_heuristic")
-            elif len(all_matches) > 1:
-                g.add_edge(fn_id, f"ambiguous_call::{bare_name}", relation="calls",
-                           confidence="flagged", reason=f"{len(all_matches)}_candidate_definitions",
-                           raw_call=raw_call, provenance="graph_builder:call_resolution_heuristic")
+                if not resolved_target:
+                    repo_cls = [cid for cid, cls in all_classes.items() if cls.name == target_cls_name]
+                    if len(repo_cls) == 1:
+                        resolved_target = repo_cls[0]
+                        resolved_confidence = "low_confidence"
+                        resolved_provenance = "graph_builder:constructor_repo_resolution"
+                    elif len(repo_cls) > 1:
+                        g.add_edge(fn_id, f"ambiguous_call::{target_cls_name}", relation="calls",
+                                   confidence="flagged", reason="duplicate_constructor_candidates",
+                                   raw_call=raw_call, provenance="graph_builder:constructor_ambiguous")
+                        continue
+                    else:
+                        g.add_edge(fn_id, f"unresolved_call::{raw_call}", relation="calls",
+                                   confidence="flagged", reason="constructor_target_not_found",
+                                   raw_call=raw_call, provenance="graph_builder:constructor_unresolved")
+                        continue
+
+            # 2. Instance Receiver Calls (`self.`, `this.`, `super.`)
+            elif raw_strip.startswith(("self.", "this.", "super.")):
+                method_name = bare_name
+                if enclosing_cls_id:
+                    methods = class_methods_map[enclosing_cls_id].get(method_name, [])
+                    if len(methods) == 1:
+                        resolved_target = methods[0].id
+                        resolved_confidence = "high_confidence"
+                        resolved_provenance = "graph_builder:class_receiver_resolution"
+                    elif len(methods) > 1:
+                        g.add_edge(fn_id, f"ambiguous_call::{method_name}", relation="calls",
+                                   confidence="flagged", reason="duplicate_method_in_class",
+                                   raw_call=raw_call, provenance="graph_builder:class_receiver_ambiguous")
+                        continue
+
+                    if not resolved_target:
+                        visited_parents = set()
+                        queue = list(class_parents_map.get(enclosing_cls_id, []))
+                        while queue:
+                            p_id = queue.pop(0)
+                            if p_id in visited_parents:
+                                continue
+                            visited_parents.add(p_id)
+
+                            p_methods = class_methods_map[p_id].get(method_name, [])
+                            if len(p_methods) == 1:
+                                resolved_target = p_methods[0].id
+                                resolved_confidence = "high_confidence"
+                                resolved_provenance = "graph_builder:inheritance_receiver_resolution"
+                                break
+                            elif len(p_methods) > 1:
+                                break
+                            queue.extend(class_parents_map.get(p_id, []))
+
+                if not resolved_target:
+                    repo_matches = [fid for fid in func_name_index.get(method_name, []) if fid != fn_id]
+                    if len(repo_matches) == 1:
+                        resolved_target = repo_matches[0]
+                        resolved_confidence = "low_confidence"
+                        resolved_provenance = "graph_builder:receiver_method_repo_match"
+                    elif len(repo_matches) > 1:
+                        g.add_edge(fn_id, f"ambiguous_call::{method_name}", relation="calls",
+                                   confidence="flagged", reason=f"{len(repo_matches)}_candidate_definitions",
+                                   raw_call=raw_call, provenance="graph_builder:receiver_method_ambiguous")
+                        continue
+                    else:
+                        g.add_edge(fn_id, f"unresolved_call::{raw_call}", relation="calls",
+                                   confidence="flagged", reason="attribute_call_unknown_receiver_type",
+                                   raw_call=raw_call, provenance="graph_builder:call_resolution_heuristic")
+                        continue
+
+            # 3. Module or Class Qualified Calls (`module.func()`, `Class.method()`)
+            elif "." in raw_strip:
+                receiver_expr, func_name = raw_strip.rsplit(".", 1)
+                receiver_bare = receiver_expr.split(".")[-1]
+
+                if receiver_bare in file_imports_map[norm_file]:
+                    imp = file_imports_map[norm_file][receiver_bare]
+                    target_file = file_depends_on_map[norm_file].get(imp.imported) or file_module_map.get(imp.imported)
+                    if target_file:
+                        tf_funcs = [f for f in file_func_map[target_file].get(func_name, [])]
+                        if len(tf_funcs) == 1:
+                            resolved_target = tf_funcs[0].id
+                            resolved_confidence = "high_confidence"
+                            resolved_provenance = "graph_builder:module_qualified_resolution"
+
+                if not resolved_target:
+                    matching_classes = [cls for cls in all_classes.values() if cls.name == receiver_bare]
+                    if len(matching_classes) == 1:
+                        cls_id = matching_classes[0].id
+                        c_methods = class_methods_map[cls_id].get(func_name, [])
+                        if len(c_methods) == 1:
+                            resolved_target = c_methods[0].id
+                            resolved_confidence = "high_confidence"
+                            resolved_provenance = "graph_builder:class_qualified_resolution"
+
+                if not resolved_target:
+                    repo_matches = [fid for fid in func_name_index.get(func_name, []) if fid != fn_id]
+                    if len(repo_matches) == 1:
+                        resolved_target = repo_matches[0]
+                        resolved_confidence = "low_confidence"
+                        resolved_provenance = "graph_builder:attribute_call_heuristic"
+                    else:
+                        g.add_edge(fn_id, f"unresolved_call::{raw_call}", relation="calls",
+                                   confidence="flagged", reason="attribute_call_unknown_receiver_type",
+                                   raw_call=raw_call, provenance="graph_builder:call_resolution_heuristic")
+                        continue
+
+            # 4. Bare Calls (`func()`, `help()`)
             else:
-                g.add_edge(fn_id, f"unresolved_call::{raw_call}", relation="calls",
-                           confidence="flagged", reason="no_matching_definition_found",
-                           raw_call=raw_call, provenance="graph_builder:call_resolution_heuristic")
+                bare_name = raw_strip
+
+                # 4a. Check explicit bound imports in file
+                if bare_name in file_imports_map[norm_file]:
+                    imp = file_imports_map[norm_file][bare_name]
+                    imported_mod = imp.imported.rsplit(".", 1)[0] if "." in imp.imported else imp.imported
+                    imported_sym = imp.imported.split(".")[-1]
+
+                    target_file = (
+                        file_depends_on_map[norm_file].get(imp.imported)
+                        or file_depends_on_map[norm_file].get(imported_mod)
+                        or file_module_map.get(imported_mod)
+                        or file_module_map.get(imp.imported)
+                    )
+                    if target_file:
+                        target_symbol = imported_sym if (imp.alias and bare_name == imp.alias) else bare_name
+                        tf_funcs = [f for f in file_func_map[target_file].get(target_symbol, [])]
+                        if not tf_funcs:
+                            tf_funcs = [f for f in file_func_map[target_file].get(imported_sym, [])]
+                        if len(tf_funcs) == 1:
+                            resolved_target = tf_funcs[0].id
+                            resolved_confidence = "high_confidence"
+                            resolved_provenance = "graph_builder:imported_call_resolution"
+
+                # 4b. Check all module dependency targets of this file for bare_name
+                if not resolved_target and norm_file in file_depends_on_map:
+                    for imp_mod, t_file in file_depends_on_map[norm_file].items():
+                        tf_funcs = [f for f in file_func_map[t_file].get(bare_name, [])]
+                        if len(tf_funcs) == 1:
+                            resolved_target = tf_funcs[0].id
+                            resolved_confidence = "high_confidence"
+                            resolved_provenance = "graph_builder:imported_call_resolution"
+                            break
+
+                # 4c. Same-file function definition
+                if not resolved_target:
+                    same_file_matches = [f.id for f in file_func_map[norm_file].get(bare_name, []) if f.id != fn_id]
+                    name_also_imported = bare_name in file_import_names.get(norm_file, set())
+
+                    if len(same_file_matches) > 1:
+                        g.add_edge(fn_id, f"ambiguous_call::{bare_name}", relation="calls",
+                                   confidence="flagged", reason="duplicate_same_file_candidates",
+                                   raw_call=raw_call, provenance="graph_builder:call_resolution_heuristic")
+                        continue
+                    elif len(same_file_matches) == 1 and not name_also_imported:
+                        resolved_target = same_file_matches[0]
+                        resolved_confidence = "high_confidence"
+                        resolved_provenance = "graph_builder:same_file_call_resolution"
+                    elif len(same_file_matches) == 1 and name_also_imported:
+                        g.add_edge(fn_id, f"ambiguous_call::{bare_name}", relation="calls",
+                                   confidence="flagged", reason="name_collides_with_local_import",
+                                   raw_call=raw_call, provenance="graph_builder:call_resolution_heuristic")
+                        continue
+
+                # 4d. Repo-wide function definition
+                if not resolved_target:
+                    all_matches = [fid for fid in func_name_index.get(bare_name, []) if fid != fn_id]
+                    if len(all_matches) == 1:
+                        resolved_target = all_matches[0]
+                        resolved_confidence = "low_confidence"
+                        resolved_provenance = "graph_builder:repo_wide_name_match"
+                    elif len(all_matches) > 1:
+                        g.add_edge(fn_id, f"ambiguous_call::{bare_name}", relation="calls",
+                                   confidence="flagged", reason=f"{len(all_matches)}_candidate_definitions",
+                                   raw_call=raw_call, provenance="graph_builder:call_resolution_heuristic")
+                        continue
+                    else:
+                        g.add_edge(fn_id, f"unresolved_call::{raw_call}", relation="calls",
+                                   confidence="flagged", reason="no_matching_definition_found",
+                                   raw_call=raw_call, provenance="graph_builder:call_resolution_heuristic")
+                        continue
+
+            if resolved_target and resolved_confidence:
+                g.add_edge(
+                    fn_id,
+                    resolved_target,
+                    relation="calls",
+                    confidence=resolved_confidence,
+                    raw_call=raw_call,
+                    provenance=resolved_provenance
+                )
 
     # --- Layer 4: Static Analysis Finding Edges (has_finding) ---
     if static_analysis:
