@@ -1,5 +1,5 @@
 """
-Contract & Fixture Test Suite for Session 2.
+Contract & Fixture Test Suite for Sessions 2, 3, and 4.
 
 Verifies that all analyzers adhere strictly to the AnalyzerContract,
 supporting all 5 statuses: success, partial, failed, unsupported, unavailable.
@@ -13,7 +13,11 @@ from analyzer_contract import (
     BaseAnalyzer,
     VALID_STATUS_VALUES,
 )
-from static_analysis import analyze_repository, run_bandit, LizardAnalyzer, LIZARD_VERSION
+from static_analysis import (
+    analyze_repository, run_bandit,
+    LizardAnalyzer, LIZARD_VERSION,
+    SemgrepAnalyzer, SEMGREP_VERSION, _SEMGREP_BINARY,
+)
 import static_analysis as _sa_module
 from main import run_pipeline
 
@@ -238,3 +242,258 @@ class TestLizardAnalyzer:
         assert "lizard_complexity" in res["static_analysis"]
         lc = res["static_analysis"]["lizard_complexity"]
         assert lc["status"] in VALID_STATUS_VALUES
+
+
+# ---------------------------------------------------------------------------
+# Session 4 — SemgrepAnalyzer tests
+# ---------------------------------------------------------------------------
+
+SEMGREP_AVAILABLE = _SEMGREP_BINARY is not None
+
+
+class TestSemgrepAnalyzer:
+    """Contract tests for SemgrepAnalyzer."""
+
+    def test_semgrep_version_constant(self):
+        """SEMGREP_VERSION is a non-empty string when installed."""
+        assert isinstance(SEMGREP_VERSION, str)
+        assert SEMGREP_VERSION != ""
+
+    def test_semgrep_is_available_when_installed(self):
+        """SemgrepAnalyzer.is_available() reflects actual binary presence."""
+        analyzer = SemgrepAnalyzer()
+        avail, err = analyzer.is_available()
+        if SEMGREP_AVAILABLE:
+            assert avail is True
+            assert err is None
+        else:
+            assert avail is False
+            assert err is not None and "semgrep" in err.lower()
+
+    def test_semgrep_provenance_tag(self):
+        analyzer = SemgrepAnalyzer()
+        assert analyzer.provenance_tag == f"semgrep:{SEMGREP_VERSION}"
+
+    def test_semgrep_supports_language(self):
+        analyzer = SemgrepAnalyzer()
+        assert analyzer.supports_language("python") is True
+        assert analyzer.supports_language("Python") is True   # case-insensitive
+        assert analyzer.supports_language("java") is True
+        assert analyzer.supports_language("cobol") is False    # not in scope
+
+    def test_semgrep_empty_file_list_returns_unsupported(self):
+        analyzer = SemgrepAnalyzer()
+        result = analyzer.analyze("/fake/root", [])
+        assert result.status == "unsupported"
+        assert result.results == []
+
+    def test_semgrep_nonexistent_files_returns_unsupported(self, tmp_path):
+        """If all supplied paths don't exist on disk, return unsupported."""
+        analyzer = SemgrepAnalyzer()
+        result = analyzer.analyze(str(tmp_path), [str(tmp_path / "ghost.py")])
+        assert result.status == "unsupported"
+
+    def test_semgrep_unavailable_simulation(self, monkeypatch):
+        """Simulate missing binary: is_available() returns False -> unavailable."""
+        monkeypatch.setattr(_sa_module, "_SEMGREP_BINARY", None)
+        analyzer = SemgrepAnalyzer()
+        avail, err = analyzer.is_available()
+        assert avail is False
+        assert "semgrep" in err.lower()
+
+        result = analyzer.analyze("/fake", ["/fake/app.py"])
+        assert result.status == "unavailable"
+        assert result.results == []
+        assert len(result.errors) >= 1
+
+    def test_semgrep_timeout_simulation(self, monkeypatch, tmp_path):
+        """Simulate subprocess timeout: status must be 'failed', not empty success."""
+        import subprocess as _sp
+        good = tmp_path / "good.py"
+        good.write_text("x = 1\n", encoding="utf-8")
+
+        def mock_run(*args, **kwargs):
+            raise _sp.TimeoutExpired(cmd="semgrep", timeout=180)
+
+        monkeypatch.setattr(_sa_module, "_SEMGREP_BINARY", "/fake/semgrep")
+        monkeypatch.setattr("subprocess.run", mock_run)
+        analyzer = SemgrepAnalyzer()
+        result = analyzer.analyze(str(tmp_path), [str(good)])
+        assert result.status == "failed"
+        assert any("timed out" in e.lower() for e in result.errors)
+
+    def test_semgrep_bad_exit_code(self, monkeypatch, tmp_path):
+        """Exit code 2 (error) must produce 'failed', not an empty result."""
+        import subprocess as _sp
+        good = tmp_path / "good.py"
+        good.write_text("x = 1\n", encoding="utf-8")
+
+        class FakeProc:
+            returncode = 2
+            stdout = ""
+            stderr = "Internal error: semgrep crashed"
+
+        monkeypatch.setattr(_sa_module, "_SEMGREP_BINARY", "/fake/semgrep")
+        monkeypatch.setattr("subprocess.run", lambda *a, **kw: FakeProc())
+        analyzer = SemgrepAnalyzer()
+        result = analyzer.analyze(str(tmp_path), [str(good)])
+        assert result.status == "failed"
+        assert result.results == []
+
+    def test_semgrep_unparsable_json(self, monkeypatch, tmp_path):
+        """Unparsable stdout must produce 'failed'."""
+        good = tmp_path / "good.py"
+        good.write_text("x = 1\n", encoding="utf-8")
+
+        class FakeProc:
+            returncode = 0
+            stdout = "This is not JSON {{{"
+            stderr = ""
+
+        monkeypatch.setattr(_sa_module, "_SEMGREP_BINARY", "/fake/semgrep")
+        monkeypatch.setattr("subprocess.run", lambda *a, **kw: FakeProc())
+        analyzer = SemgrepAnalyzer()
+        result = analyzer.analyze(str(tmp_path), [str(good)])
+        assert result.status == "failed"
+        assert any("json" in e.lower() for e in result.errors)
+
+    def test_semgrep_missing_results_key(self, monkeypatch, tmp_path):
+        """JSON without a 'results' list must produce 'failed'."""
+        import json as _json
+        good = tmp_path / "good.py"
+        good.write_text("x = 1\n", encoding="utf-8")
+
+        class FakeProc:
+            returncode = 0
+            stdout = _json.dumps({"version": "1.0", "errors": []})
+            stderr = ""
+
+        monkeypatch.setattr(_sa_module, "_SEMGREP_BINARY", "/fake/semgrep")
+        monkeypatch.setattr("subprocess.run", lambda *a, **kw: FakeProc())
+        analyzer = SemgrepAnalyzer()
+        result = analyzer.analyze(str(tmp_path), [str(good)])
+        assert result.status == "failed"
+
+    def test_semgrep_no_findings_is_success(self, monkeypatch, tmp_path):
+        """Zero findings with exit code 0 is a legitimate success."""
+        import json as _json
+        good = tmp_path / "good.py"
+        good.write_text("x = 1\n", encoding="utf-8")
+
+        class FakeProc:
+            returncode = 0
+            stdout = _json.dumps({"results": [], "errors": [], "version": "1.177.0"})
+            stderr = ""
+
+        monkeypatch.setattr(_sa_module, "_SEMGREP_BINARY", "/fake/semgrep")
+        monkeypatch.setattr("subprocess.run", lambda *a, **kw: FakeProc())
+        analyzer = SemgrepAnalyzer()
+        result = analyzer.analyze(str(tmp_path), [str(good)])
+        assert result.status == "success"
+        assert result.results == []
+
+    def test_semgrep_finding_field_schema(self, monkeypatch, tmp_path):
+        """Findings must carry: rule_id, file, line, col, message, severity, provenance."""
+        import json as _json
+        f = tmp_path / "vuln.py"
+        f.write_text("import subprocess; subprocess.run(x, shell=True)\n", encoding="utf-8")
+
+        finding = {
+            "check_id": "python.lang.security.audit.subprocess-shell-true.subprocess-shell-true",
+            "path": str(f),
+            "start": {"line": 1, "col": 18},
+            "end": {"line": 1, "col": 40},
+            "extra": {
+                "message": "Subprocess called with shell=True",
+                "severity": "WARNING",
+                "metadata": {"cwe": ["CWE-78"]},
+            },
+        }
+
+        class FakeProc:
+            returncode = 1
+            stdout = _json.dumps({"results": [finding], "errors": [], "version": "1.177.0"})
+            stderr = ""
+
+        monkeypatch.setattr(_sa_module, "_SEMGREP_BINARY", "/fake/semgrep")
+        monkeypatch.setattr("subprocess.run", lambda *a, **kw: FakeProc())
+        analyzer = SemgrepAnalyzer()
+        result = analyzer.analyze(str(tmp_path), [str(f)])
+        assert result.status == "success"
+        assert len(result.results) == 1
+        r = result.results[0]
+        assert r["rule_id"] == "python.lang.security.audit.subprocess-shell-true.subprocess-shell-true"
+        assert "vuln.py" in r["file"]
+        assert r["line"] == 1
+        assert r["col"] == 18
+        assert "shell=True" in r["message"]
+        assert r["severity"] == "WARNING"
+        assert r["provenance"].startswith("semgrep:")
+        assert r["cwe"] == ["CWE-78"]
+
+    def test_semgrep_findings_deterministic_order(self, monkeypatch, tmp_path):
+        """Findings must be sorted deterministically: file -> line -> col -> rule_id."""
+        import json as _json
+        f = tmp_path / "vuln.py"
+        f.write_text("x = 1\n" * 5, encoding="utf-8")
+
+        def make_finding(line, col, rule):
+            return {
+                "check_id": rule,
+                "path": str(f),
+                "start": {"line": line, "col": col},
+                "end": {"line": line, "col": col + 1},
+                "extra": {"message": "msg", "severity": "INFO", "metadata": {}},
+            }
+
+        raw = [
+            make_finding(3, 1, "rule-b"),
+            make_finding(1, 5, "rule-a"),
+            make_finding(1, 5, "rule-z"),
+            make_finding(2, 0, "rule-c"),
+        ]
+
+        class FakeProc:
+            returncode = 1
+            stdout = _json.dumps({"results": raw, "errors": []})
+            stderr = ""
+
+        monkeypatch.setattr(_sa_module, "_SEMGREP_BINARY", "/fake/semgrep")
+        monkeypatch.setattr("subprocess.run", lambda *a, **kw: FakeProc())
+        analyzer = SemgrepAnalyzer()
+        result = analyzer.analyze(str(tmp_path), [str(f)])
+        assert result.status == "success"
+        order = [(r["line"], r["col"], r["rule_id"]) for r in result.results]
+        assert order == sorted(order)
+
+    def test_semgrep_safe_env_strips_secrets(self):
+        """_safe_env() must strip SEMGREP_APP_TOKEN, SEMGREP_LOGIN_TOKEN etc."""
+        import os as _os
+        with pytest.MonkeyPatch().context() as m:
+            m.setenv("SEMGREP_APP_TOKEN", "supersecret")
+            m.setenv("SEMGREP_LOGIN_TOKEN", "another_secret")
+            m.setenv("SEMGREP_API_TOKEN", "yet_another")
+            m.setenv("PATH", _os.environ.get("PATH", ""))
+            env = SemgrepAnalyzer._safe_env()
+        assert "SEMGREP_APP_TOKEN" not in env
+        assert "SEMGREP_LOGIN_TOKEN" not in env
+        assert "SEMGREP_API_TOKEN" not in env
+        assert "PATH" in env  # safe vars are preserved
+
+    def test_analyze_repository_includes_semgrep_findings(self):
+        """analyze_repository() output must include the 'semgrep_findings' key."""
+        fixture = os.path.join(FIXTURES_DIR, "success_repo")
+        py_files = [f for f in os.listdir(fixture) if f.endswith(".py")]
+        result = analyze_repository(fixture, py_files)
+        assert "semgrep_findings" in result
+        sf = result["semgrep_findings"]
+        assert sf["status"] in VALID_STATUS_VALUES
+        assert "results" in sf
+
+    def test_pipeline_semgrep_findings_present(self):
+        """run_pipeline output must include semgrep_findings in static_analysis."""
+        fixture = os.path.join(FIXTURES_DIR, "success_repo")
+        res = run_pipeline(None, fixture, None, os.path.join(fixture, ".cache"))
+        assert "semgrep_findings" in res["static_analysis"]
+        sf = res["static_analysis"]["semgrep_findings"]
+        assert sf["status"] in VALID_STATUS_VALUES

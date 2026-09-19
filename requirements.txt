@@ -3,4 +3,5 @@ tree_sitter_languages==1.10.2
 radon>=6.0
 lizard>=1.17
 bandit>=1.7
+semgrep>=1.17
 networkx>=3.0
