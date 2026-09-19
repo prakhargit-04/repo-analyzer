@@ -18,6 +18,7 @@ from static_analysis import (
     LizardAnalyzer, LIZARD_VERSION,
     SemgrepAnalyzer, SEMGREP_VERSION, _SEMGREP_BINARY,
     GitleaksAnalyzer, GITLEAKS_VERSION, _GITLEAKS_BINARY,
+    OSVAnalyzer, parse_manifest_file,
 )
 import static_analysis as _sa_module
 from main import run_pipeline
@@ -772,4 +773,183 @@ class TestGitleaksAnalyzer:
         assert "gitleaks_findings" in res["static_analysis"]
         gf = res["static_analysis"]["gitleaks_findings"]
         assert gf["status"] in VALID_STATUS_VALUES
+
+
+class TestOSVAnalyzer:
+    """Contract, manifest parsing, error handling, and API integration tests for OSVAnalyzer."""
+
+    def test_parse_requirements_txt(self, tmp_path):
+        f = tmp_path / "requirements.txt"
+        f.write_text("requests==2.28.1\npytest>=7.0.0\n# comment\n", encoding="utf-8")
+        deps, errs = parse_manifest_file(str(f), "requirements.txt")
+        assert len(errs) == 0
+        assert len(deps) == 2
+        req = next(d for d in deps if d.package_name == "requests")
+        assert req.installed_version == "2.28.1"
+        assert req.ecosystem == "PyPI"
+
+    def test_parse_pyproject_toml(self, tmp_path):
+        f = tmp_path / "pyproject.toml"
+        f.write_text('[project]\ndependencies = ["urllib3==1.26.5", "click>=8.0"]\n', encoding="utf-8")
+        deps, errs = parse_manifest_file(str(f), "pyproject.toml")
+        assert len(errs) == 0
+        assert len(deps) == 2
+        u = next(d for d in deps if d.package_name == "urllib3")
+        assert u.installed_version == "1.26.5"
+
+    def test_parse_package_json(self, tmp_path):
+        import json as _json
+        f = tmp_path / "package.json"
+        f.write_text(_json.dumps({"dependencies": {"express": "4.17.1"}}), encoding="utf-8")
+        deps, errs = parse_manifest_file(str(f), "package.json")
+        assert len(errs) == 0
+        assert len(deps) == 1
+        assert deps[0].package_name == "express"
+        assert deps[0].installed_version == "4.17.1"
+        assert deps[0].ecosystem == "npm"
+
+    def test_osv_unsupported_repo_no_manifests(self, tmp_path):
+        """Repository without manifests returns unsupported."""
+        analyzer = OSVAnalyzer()
+        result = analyzer.analyze(str(tmp_path), [])
+        assert result.status == "unsupported"
+
+    def test_osv_network_error_simulation(self, monkeypatch, tmp_path):
+        """Simulate HTTP / network error returning unavailable status."""
+        import urllib.error as _ue
+        f = tmp_path / "requirements.txt"
+        f.write_text("requests==2.28.1\n", encoding="utf-8")
+
+        def mock_urlopen(*args, **kwargs):
+            raise _ue.URLError("Connection refused")
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        analyzer = OSVAnalyzer()
+        result = analyzer.analyze(str(tmp_path), [str(f)])
+        assert result.status == "unavailable"
+        assert any("network error" in e for e in result.errors)
+
+    def test_osv_batch_response_mismatch_fails(self, monkeypatch, tmp_path):
+        """Mismatched API response list returns failed status."""
+        import json as _json
+
+        class FakeResp:
+            def read(self):
+                return _json.dumps({"results": []}).encode("utf-8")
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                pass
+
+        f = tmp_path / "requirements.txt"
+        f.write_text("requests==2.28.1\n", encoding="utf-8")
+
+        monkeypatch.setattr("urllib.request.urlopen", lambda *a, **kw: FakeResp())
+        analyzer = OSVAnalyzer()
+        result = analyzer.analyze(str(tmp_path), [str(f)])
+        assert result.status == "failed"
+
+    def test_osv_clean_dependencies_is_success(self, monkeypatch, tmp_path):
+        """Zero vulnerabilities found returns status success."""
+        import json as _json
+
+        class FakeResp:
+            def read(self):
+                return _json.dumps({"results": [{"vulns": []}]}).encode("utf-8")
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                pass
+
+        f = tmp_path / "requirements.txt"
+        f.write_text("safe_pkg==1.0.0\n", encoding="utf-8")
+
+        monkeypatch.setattr("urllib.request.urlopen", lambda *a, **kw: FakeResp())
+        analyzer = OSVAnalyzer()
+        result = analyzer.analyze(str(tmp_path), [str(f)])
+        assert result.status == "success"
+        assert result.results == []
+
+    def test_osv_vulnerability_finding_schema_and_ordering(self, monkeypatch, tmp_path):
+        """Findings carry package_name, ecosystem, installed_version, vulnerability_id, summary, severity, fixed_versions."""
+        import json as _json
+
+        class FakeResp:
+            def __init__(self, data):
+                self._data = data
+                self.status = 200
+            def read(self):
+                return _json.dumps(self._data).encode("utf-8")
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                pass
+
+        def mock_urlopen(req, *args, **kwargs):
+            url = req.full_url if hasattr(req, "full_url") else str(req)
+            if "querybatch" in url:
+                payload = {
+                    "results": [
+                        {
+                            "vulns": [
+                                {
+                                    "id": "GHSA-1234",
+                                    "summary": "Sample Vulnerability",
+                                }
+                            ]
+                        }
+                    ]
+                }
+                return FakeResp(payload)
+            else:
+                vuln_detail = {
+                    "id": "GHSA-1234",
+                    "summary": "Sample Vulnerability",
+                    "severity": [{"type": "CVSS_V3", "score": "7.5"}],
+                    "affected": [
+                        {
+                            "ranges": [
+                                {
+                                    "type": "ECOSYSTEM",
+                                    "events": [{"introduced": "0"}, {"fixed": "2.28.2"}],
+                                }
+                            ]
+                        }
+                    ],
+                }
+                return FakeResp(vuln_detail)
+
+        f = tmp_path / "requirements.txt"
+        f.write_text("requests==2.20.0\n", encoding="utf-8")
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        analyzer = OSVAnalyzer()
+        result = analyzer.analyze(str(tmp_path), [str(f)])
+        assert result.status == "success"
+        assert len(result.results) == 1
+        r = result.results[0]
+        assert r["package_name"] == "requests"
+        assert r["ecosystem"] == "PyPI"
+        assert r["vulnerability_id"] == "GHSA-1234"
+        assert r["summary"] == "Sample Vulnerability"
+        assert r["fixed_versions"] == ["2.28.2"]
+
+    def test_analyze_repository_includes_osv_vulnerabilities(self):
+        """analyze_repository() output must include the 'osv_vulnerabilities' key."""
+        fixture = os.path.join(FIXTURES_DIR, "success_repo")
+        py_files = [f for f in os.listdir(fixture) if f.endswith(".py")]
+        result = analyze_repository(fixture, py_files)
+        assert "osv_vulnerabilities" in result
+        ov = result["osv_vulnerabilities"]
+        assert ov["status"] in VALID_STATUS_VALUES
+        assert "results" in ov
+
+    def test_pipeline_osv_vulnerabilities_present(self):
+        """run_pipeline output must include osv_vulnerabilities in static_analysis."""
+        fixture = os.path.join(FIXTURES_DIR, "success_repo")
+        res = run_pipeline(None, fixture, None, os.path.join(fixture, ".cache"))
+        assert "osv_vulnerabilities" in res["static_analysis"]
+        ov = res["static_analysis"]["osv_vulnerabilities"]
+        assert ov["status"] in VALID_STATUS_VALUES
+
 

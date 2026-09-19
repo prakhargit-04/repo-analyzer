@@ -28,6 +28,14 @@ import json
 import os
 import sys
 import tempfile
+import re
+import urllib.request
+import urllib.error
+import concurrent.futures
+try:
+    import tomllib
+except ImportError:
+    tomllib = None  # type: ignore[assignment]
 from dataclasses import dataclass, asdict, field
 from importlib.metadata import version as pkg_version, PackageNotFoundError
 from typing import Any, Dict, List, Optional
@@ -901,6 +909,385 @@ class GitleaksAnalyzer(BaseAnalyzer):
 _GITLEAKS_ANALYZER = GitleaksAnalyzer()
 
 
+@dataclass
+class ExtractedDependency:
+    """Dependency declared in a repository manifest file."""
+    package_name: str
+    installed_version: str
+    ecosystem: str          # e.g., "PyPI", "npm"
+    manifest_file: str      # relative path to manifest file
+
+
+@dataclass
+class OSVVulnerabilityFinding:
+    """
+    Normalized single OSV vulnerability finding.
+    """
+    package_name: str
+    ecosystem: str
+    installed_version: str
+    vulnerability_id: str
+    summary: str
+    severity: str = "UNKNOWN"
+    fixed_versions: List[str] = field(default_factory=list)
+    affected_ranges: List[str] = field(default_factory=list)
+    manifest_file: str = ""
+    provenance: str = ""
+
+    def __post_init__(self):
+        if not self.provenance:
+            self.provenance = "osv:v1.0.0"
+
+
+def parse_manifest_file(abs_path: str, rel_path: str) -> tuple[List[ExtractedDependency], List[str]]:
+    """
+    Parses a single dependency manifest file safely without executing code.
+    Returns (dependencies, errors).
+    """
+    filename = os.path.basename(abs_path).lower()
+    errors: List[str] = []
+    deps: List[ExtractedDependency] = []
+
+    try:
+        with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read()
+    except Exception as exc:  # noqa: BLE001
+        return [], [f"Failed to read manifest {rel_path}: {exc!r}"]
+
+    if ("requirements" in filename and filename.endswith(".txt")) or filename.endswith(".reqs"):
+        for line in content.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or line.startswith("-"):
+                continue
+            if " #" in line:
+                line = line.split(" #", 1)[0].strip()
+            if ";" in line:
+                line = line.split(";", 1)[0].strip()
+            match = re.match(r"^([A-Za-z0-9_\-\.]+)\s*(?:==|>=|<=|~=|>|<|!=)?\s*([A-Za-z0-9_\-\.]+)?", line)
+            if match:
+                pkg_name = match.group(1).strip()
+                version = ""
+                if "==" in line:
+                    parts = line.split("==")
+                    if len(parts) >= 2:
+                        version = parts[1].split()[0].strip()
+                elif match.group(2) and not any(op in line for op in (">=", "<=", "~=", ">", "<", "!=")):
+                    version = match.group(2).strip()
+                if pkg_name:
+                    deps.append(ExtractedDependency(
+                        package_name=pkg_name,
+                        installed_version=version,
+                        ecosystem="PyPI",
+                        manifest_file=rel_path,
+                    ))
+
+    elif filename == "pyproject.toml" and tomllib:
+        try:
+            data = tomllib.loads(content)
+            project_deps = data.get("project", {}).get("dependencies", [])
+            if isinstance(project_deps, list):
+                for item in project_deps:
+                    if isinstance(item, str):
+                        match = re.match(r"^([A-Za-z0-9_\-\.]+)\s*(?:==|>=|<=|~=|>|<|!=)?\s*([A-Za-z0-9_\-\.]+)?", item.strip())
+                        if match:
+                            pkg_name = match.group(1).strip()
+                            version = ""
+                            if "==" in item:
+                                parts = item.split("==")
+                                if len(parts) >= 2:
+                                    version = parts[1].split()[0].strip()
+                            deps.append(ExtractedDependency(
+                                package_name=pkg_name,
+                                installed_version=version,
+                                ecosystem="PyPI",
+                                manifest_file=rel_path,
+                            ))
+
+            poetry_deps = data.get("tool", {}).get("poetry", {}).get("dependencies", {})
+            if isinstance(poetry_deps, dict):
+                for pkg_name, spec in poetry_deps.items():
+                    if pkg_name.lower() == "python":
+                        continue
+                    version = ""
+                    if isinstance(spec, str):
+                        version = spec.lstrip("^~=>=")
+                    elif isinstance(spec, dict) and "version" in spec:
+                        version = str(spec["version"]).lstrip("^~=>=")
+                    deps.append(ExtractedDependency(
+                        package_name=pkg_name,
+                        installed_version=version,
+                        ecosystem="PyPI",
+                        manifest_file=rel_path,
+                    ))
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"Failed to parse {rel_path} as TOML: {exc!r}")
+
+    elif filename == "package.json":
+        try:
+            data = json.loads(content)
+            for sec in ("dependencies", "devDependencies"):
+                sec_data = data.get(sec, {})
+                if isinstance(sec_data, dict):
+                    for pkg_name, ver_spec in sec_data.items():
+                        if isinstance(ver_spec, str):
+                            clean_ver = ver_spec.lstrip("^~=>=")
+                            deps.append(ExtractedDependency(
+                                package_name=pkg_name,
+                                installed_version=clean_ver,
+                                ecosystem="npm",
+                                manifest_file=rel_path,
+                            ))
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"Failed to parse {rel_path} as JSON: {exc!r}")
+
+    return deps, errors
+
+
+class OSVAnalyzer(BaseAnalyzer):
+    """
+    Dependency vulnerability analyzer backed by OSV.dev REST API.
+
+    Security model
+    --------------
+    * Manifest files are treated as UNTRUSTED INPUT.
+    * We NEVER execute package installers or repository code.
+    * Outbound data is strictly bounded to package name, ecosystem, and version.
+    * No secrets or code are transmitted to OSV.dev.
+    * Subprocess timeouts and HTTP timeouts (30s) prevent DoS.
+
+    Contract
+    --------
+      - unavailable  : Network / OSV service unreachable
+      - unsupported  : No supported dependency manifest found in repository
+      - success      : Scan completed cleanly (0 vulns OR 1+ vulns found)
+      - partial      : Some manifests/queries failed but others succeeded
+      - failed       : All queries failed, network error, or invalid API response
+    """
+
+    TIMEOUT_SECONDS: int = 30
+    API_BATCH_URL: str = "https://api.osv.dev/v1/querybatch"
+    API_VULN_URL: str = "https://api.osv.dev/v1/vulns/"
+
+    def __init__(self) -> None:
+        super().__init__(name="osv", version="1.0.0")
+
+    def is_available(self) -> tuple[bool, Optional[str]]:
+        return True, None
+
+    def supports_language(self, language: str) -> bool:
+        return True
+
+    def _fetch_vuln_detail(self, vuln_id: str) -> dict:
+        """Fetches detailed vulnerability object from OSV.dev /v1/vulns/{id}."""
+        try:
+            url = f"{self.API_VULN_URL}{vuln_id}"
+            req = urllib.request.Request(url, headers={"User-Agent": "repo-analyzer/0.6.0"})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status == 200:
+                    return json.loads(resp.read().decode("utf-8"))
+        except Exception:  # noqa: BLE001
+            pass
+        return {}
+
+    def analyze(self, repo_root: str, files: List[str]) -> AnalyzerResult:
+        avail, err = self.is_available()
+        if not avail:
+            return AnalyzerResult(
+                status=AnalyzerStatus.UNAVAILABLE,
+                errors=[err] if err else [],
+                provenance=self.provenance_tag,
+                metadata={"reason": err or "OSV service unavailable"},
+            )
+
+        manifest_files = []
+        for f in files:
+            abs_p = f if os.path.isabs(f) else os.path.join(repo_root, f)
+            fname = os.path.basename(abs_p).lower()
+            if os.path.isfile(abs_p) and ((fname.endswith(".txt") and "requirements" in fname) or fname in ("pyproject.toml", "package.json")):
+                rel_p = os.path.relpath(abs_p, repo_root).replace("\\", "/")
+                manifest_files.append((abs_p, rel_p))
+
+        for root, _, fnames in os.walk(repo_root):
+            rel_root = os.path.relpath(root, repo_root)
+            rel_parts = [p for p in rel_root.replace("\\", "/").split("/") if p and p != "."]
+            if any(part.startswith(".") or part in ("venv", "node_modules", "__pycache__", "dist", "build") for part in rel_parts):
+                continue
+            for fname in fnames:
+                flower = fname.lower()
+                if (flower.endswith(".txt") and "requirements" in flower) or flower in ("pyproject.toml", "package.json"):
+                    abs_p = os.path.join(root, fname)
+                    rel_p = os.path.relpath(abs_p, repo_root).replace("\\", "/")
+                    if (abs_p, rel_p) not in manifest_files:
+                        manifest_files.append((abs_p, rel_p))
+
+        if not manifest_files:
+            return AnalyzerResult(
+                status=AnalyzerStatus.UNSUPPORTED,
+                provenance=self.provenance_tag,
+                metadata={"reason": "No supported dependency manifest found in repository"},
+            )
+
+        all_deps: List[ExtractedDependency] = []
+        parse_errors: List[str] = []
+
+        for abs_p, rel_p in sorted(manifest_files):
+            deps, errs = parse_manifest_file(abs_p, rel_p)
+            all_deps.extend(deps)
+            parse_errors.extend(errs)
+
+        if not all_deps:
+            if parse_errors:
+                return AnalyzerResult(
+                    status=AnalyzerStatus.FAILED,
+                    provenance=self.provenance_tag,
+                    errors=parse_errors,
+                )
+            return AnalyzerResult(
+                status=AnalyzerStatus.UNSUPPORTED,
+                provenance=self.provenance_tag,
+                metadata={"reason": "Dependency manifests exist but contain no parseable dependencies"},
+            )
+
+        dedup_dict: Dict[tuple, ExtractedDependency] = {}
+        for d in all_deps:
+            key = (d.manifest_file, d.ecosystem, d.package_name, d.installed_version)
+            if key not in dedup_dict:
+                dedup_dict[key] = d
+        unique_deps = [dedup_dict[k] for k in sorted(dedup_dict.keys())]
+
+        queries = []
+        for d in unique_deps:
+            q = {"package": {"name": d.package_name, "ecosystem": d.ecosystem}}
+            if d.installed_version:
+                q["version"] = d.installed_version
+            queries.append(q)
+
+        payload_bytes = json.dumps({"queries": queries}).encode("utf-8")
+        req = urllib.request.Request(
+            self.API_BATCH_URL,
+            data=payload_bytes,
+            headers={"Content-Type": "application/json", "User-Agent": "repo-analyzer/0.6.0"},
+        )
+
+        try:
+            with urllib.request.urlopen(req, timeout=self.TIMEOUT_SECONDS) as resp:
+                resp_bytes = resp.read()
+                resp_data = json.loads(resp_bytes.decode("utf-8"))
+        except urllib.error.URLError as exc:
+            return AnalyzerResult(
+                status=AnalyzerStatus.UNAVAILABLE,
+                provenance=self.provenance_tag,
+                errors=[f"OSV service network error: {exc}"],
+            )
+        except Exception as exc:  # noqa: BLE001
+            return AnalyzerResult(
+                status=AnalyzerStatus.FAILED,
+                provenance=self.provenance_tag,
+                errors=[f"OSV batch query failed: {exc!r}"],
+            )
+
+        raw_results = resp_data.get("results", [])
+        if not isinstance(raw_results, list) or len(raw_results) != len(unique_deps):
+            return AnalyzerResult(
+                status=AnalyzerStatus.FAILED,
+                provenance=self.provenance_tag,
+                errors=[f"OSV batch response mismatched queries count ({len(unique_deps)})"],
+            )
+
+        vuln_map: List[tuple[ExtractedDependency, dict]] = []
+        unique_vuln_ids = set()
+
+        for dep, res in zip(unique_deps, raw_results):
+            if not isinstance(res, dict):
+                continue
+            for v in res.get("vulns", []):
+                if isinstance(v, dict) and "id" in v:
+                    vid = str(v["id"])
+                    vuln_map.append((dep, v))
+                    unique_vuln_ids.add(vid)
+
+        details_cache: Dict[str, dict] = {}
+        if unique_vuln_ids:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(5, len(unique_vuln_ids))) as executor:
+                future_to_id = {executor.submit(self._fetch_vuln_detail, vid): vid for vid in list(unique_vuln_ids)[:30]}
+                for future in concurrent.futures.as_completed(future_to_id):
+                    vid = future_to_id[future]
+                    try:
+                        details_cache[vid] = future.result()
+                    except Exception:  # noqa: BLE001
+                        details_cache[vid] = {}
+
+        findings: List[OSVVulnerabilityFinding] = []
+        for dep, raw_v in vuln_map:
+            vid = str(raw_v["id"])
+            detail_obj = details_cache.get(vid, raw_v)
+
+            summary = str(detail_obj.get("summary") or detail_obj.get("details") or "").split("\n")[0].strip()
+            if not summary:
+                summary = f"Vulnerability {vid}"
+
+            severity_str = "UNKNOWN"
+            if "severity" in detail_obj and isinstance(detail_obj["severity"], list):
+                for s_entry in detail_obj["severity"]:
+                    if isinstance(s_entry, dict) and "score" in s_entry:
+                        severity_str = str(s_entry["score"])
+                        break
+
+            fixed_versions = []
+            affected_ranges = []
+            for aff in detail_obj.get("affected", []):
+                for r_entry in aff.get("ranges", []):
+                    r_type = r_entry.get("type", "")
+                    events = r_entry.get("events", [])
+                    event_strs = []
+                    for ev in events:
+                        if "introduced" in ev:
+                            event_strs.append(f">= {ev['introduced']}")
+                        if "fixed" in ev:
+                            event_strs.append(f"< {ev['fixed']}")
+                            if str(ev['fixed']) not in fixed_versions:
+                                fixed_versions.append(str(ev['fixed']))
+                    if event_strs:
+                        affected_ranges.append(f"{r_type}: {', '.join(event_strs)}")
+
+            findings.append(OSVVulnerabilityFinding(
+                package_name=dep.package_name,
+                ecosystem=dep.ecosystem,
+                installed_version=dep.installed_version,
+                vulnerability_id=vid,
+                summary=summary,
+                severity=severity_str,
+                fixed_versions=sorted(fixed_versions),
+                affected_ranges=sorted(affected_ranges),
+                manifest_file=dep.manifest_file,
+            ))
+
+        findings.sort(key=lambda f: (f.manifest_file, f.package_name, f.vulnerability_id))
+
+        status = AnalyzerStatus.SUCCESS
+        if parse_errors and not findings:
+            status = AnalyzerStatus.PARTIAL
+        elif parse_errors:
+            status = AnalyzerStatus.PARTIAL
+
+        return AnalyzerResult(
+            status=status,
+            results=[asdict(f) for f in findings],
+            errors=parse_errors,
+            provenance=self.provenance_tag,
+            metadata={
+                "manifest_files_scanned": len(manifest_files),
+                "dependencies_scanned": len(unique_deps),
+                "vulnerabilities_found": len(findings),
+                "parse_errors": len(parse_errors),
+            },
+        )
+
+
+# Module-level singleton for OSVAnalyzer.
+_OSV_ANALYZER = OSVAnalyzer()
+
+
 def analyze_repository(repo_root: str, py_files_rel: list) -> dict:
     """
     py_files_rel: ALL python files found (test + production). This function
@@ -916,6 +1303,8 @@ def analyze_repository(repo_root: str, py_files_rel: list) -> dict:
 
     Gitleaks runs over production files to detect hardcoded secrets without
     exposing raw secret strings in output.
+
+    OSV.dev runs dependency vulnerability scanning against repository manifests.
     """
     if not py_files_rel:
         return {
@@ -928,6 +1317,7 @@ def analyze_repository(repo_root: str, py_files_rel: list) -> dict:
             "lizard_complexity": {"status": "unsupported", "results": []},
             "semgrep_findings": {"status": "unsupported", "results": []},
             "gitleaks_findings": {"status": "unsupported", "results": []},
+            "osv_vulnerabilities": {"status": "unsupported", "results": []},
         }
 
     prod_files = [f for f in py_files_rel if not is_test_file(f)]
@@ -971,6 +1361,10 @@ def analyze_repository(repo_root: str, py_files_rel: list) -> dict:
     gitleaks_result = _GITLEAKS_ANALYZER.analyze(repo_root, abs_prod_files)
     gitleaks_dict = gitleaks_result.to_dict()
 
+    # --- OSV.dev (dependency vulnerability scanning) ---
+    osv_result = _OSV_ANALYZER.analyze(repo_root, abs_prod_files)
+    osv_dict = osv_result.to_dict()
+
     return {
         "scope_policy": "production_code_only",
         "production_files_analyzed": len(prod_files),
@@ -981,4 +1375,5 @@ def analyze_repository(repo_root: str, py_files_rel: list) -> dict:
         "lizard_complexity": lizard_dict,
         "semgrep_findings": semgrep_dict,
         "gitleaks_findings": gitleaks_dict,
+        "osv_vulnerabilities": osv_dict,
     }
