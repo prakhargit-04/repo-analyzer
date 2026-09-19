@@ -89,8 +89,12 @@ def run_pipeline(repo_url: str | None, local_path: str | None, commit_sha: str |
                                else "content_hash (local path -- git HEAD alone is not "
                                     "trusted because working tree may have uncommitted changes)",
             "analyzed_at_utc": datetime.now(timezone.utc).isoformat(),
-            "languages": ["python"],
+            "languages": sorted(list({
+                "python" if r.file.endswith(".py") else "java" if r.file.endswith(".java") else "unknown"
+                for r in parse_results if not r.parse_error
+            } or {"python"})),
             "analysis_status": health["status"],
+
             "files_analyzed": len(py_files_rel),
             "parse_errors": parse_errors,
             "static_analysis": analysis,

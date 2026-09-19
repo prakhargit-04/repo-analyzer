@@ -95,6 +95,31 @@ class PythonParser(BaseParser):
         return python_parse_file(filepath, repo_root)
 
 
+class JavaParser(BaseParser):
+    """Adapter wrapping tree-sitter Java parser behind BaseParser contract."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="tree-sitter-java",
+            version="AST-walk",
+            supported_languages={"java"},
+            supported_extensions={".java"},
+        )
+
+    def is_available(self) -> Tuple[bool, Optional[str]]:
+        try:
+            from parse_java import PARSER
+            if PARSER is not None:
+                return True, None
+            return False, "Java tree-sitter parser is not initialized"
+        except Exception as exc:  # noqa: BLE001
+            return False, f"Failed to load tree-sitter-java: {exc}"
+
+    def parse_file(self, filepath: str, repo_root: str) -> FileParseResult:
+        from parse_java import parse_java_file
+        return parse_java_file(filepath, repo_root)
+
+
 class ParserRegistry:
     """
     Centralized registry of language parsers.
@@ -169,6 +194,7 @@ class ParserRegistry:
 # Global singleton parser registry
 GLOBAL_PARSER_REGISTRY = ParserRegistry()
 GLOBAL_PARSER_REGISTRY.register(PythonParser())
+GLOBAL_PARSER_REGISTRY.register(JavaParser())
 
 
 def parse_repository(repo_root: str) -> List[FileParseResult]:
@@ -179,3 +205,4 @@ def parse_repository(repo_root: str) -> List[FileParseResult]:
 def parse_file(filepath: str, repo_root: str) -> FileParseResult:
     """Convenience function delegating single file parsing to GLOBAL_PARSER_REGISTRY."""
     return GLOBAL_PARSER_REGISTRY.parse_file(filepath, repo_root)
+
