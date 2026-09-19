@@ -59,7 +59,7 @@ def run_pipeline(repo_url: str | None, local_path: str | None, commit_sha: str |
         py_files_rel = [r.file for r in parse_results if not r.parse_error]
 
         analysis = analyze_repository(repo_root, py_files_rel)
-        g = build_graph(parse_results)
+        g = build_graph(parse_results, static_analysis=analysis)
         summary = graph_summary(g)
 
         nodes = sorted(
@@ -68,7 +68,16 @@ def run_pipeline(repo_url: str | None, local_path: str | None, commit_sha: str |
         )
         edges = sorted(
             [{"source": source, "target": target, **attributes} for source, target, attributes in g.edges(data=True)],
-            key=lambda e: (str(e["source"]), str(e["target"]), str(e.get("relation", "")), str(e.get("raw_call", "")))
+            key=lambda e: (
+                str(e["source"]),
+                str(e["target"]),
+                str(e.get("relation", "")),
+                str(e.get("raw_call", "")),
+                str(e.get("base_name", "")),
+                str(e.get("imported_module", "")),
+                str(e.get("rule_id", "")),
+                str(e.get("line", "")),
+            )
         )
         graph_data = {"nodes": nodes, "edges": edges}
 
