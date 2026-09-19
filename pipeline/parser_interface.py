@@ -198,9 +198,20 @@ class ParserRegistry:
     def parse_file(self, filepath: str, repo_root: str) -> FileParseResult:
         """
         Parses a single file using the appropriate registered parser.
-        Returns explicit parse_error if unsupported or unavailable.
+        Returns explicit parse_error if unsupported, unavailable, oversized, or unsafe.
         """
         rel_path = os.path.relpath(filepath, repo_root).replace("\\", "/")
+
+        from util import is_safe_relative_path
+        if not is_safe_relative_path(rel_path, repo_root):
+            return FileParseResult(
+                file=rel_path,
+                functions=[],
+                classes=[],
+                imports=[],
+                parse_error=f"Unsafe path / path traversal detected for file {rel_path}",
+            )
+
         parser = self.get_parser_for_file(filepath)
 
         if parser is None:
@@ -223,18 +234,55 @@ class ParserRegistry:
                 parse_error=f"Parser '{parser.name}' is unavailable: {err}",
             )
 
+        MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+        try:
+            if os.path.islink(filepath):
+                real_target = os.path.realpath(filepath)
+                real_root = os.path.realpath(repo_root)
+                if not os.path.commonpath([real_target, real_root]) == real_root:
+                    return FileParseResult(
+                        file=rel_path,
+                        functions=[],
+                        classes=[],
+                        imports=[],
+                        parse_error=f"Symlink targets file outside repository root: {rel_path}",
+                    )
+
+            if os.path.isfile(filepath) and os.path.getsize(filepath) > MAX_FILE_SIZE:
+                return FileParseResult(
+                    file=rel_path,
+                    functions=[],
+                    classes=[],
+                    imports=[],
+                    parse_error=f"File size exceeds maximum limit of 10MB: {rel_path}",
+                )
+        except OSError as exc:
+            return FileParseResult(
+                file=rel_path,
+                functions=[],
+                classes=[],
+                imports=[],
+                parse_error=f"Unreadable file: {exc}",
+            )
+
         return parser.parse_file(filepath, repo_root)
 
     def parse_repository(self, repo_root: str) -> List[FileParseResult]:
         """Walk repo_root and parse all supported source files in deterministic order."""
+        if not os.path.exists(repo_root) or not os.path.isdir(repo_root):
+            raise ValueError(f"Invalid or non-existent repository path: '{repo_root}'")
+
         SKIP_DIRS = {".git", "venv", ".venv", "__pycache__", "node_modules", "site-packages", "dist", "build"}
+        MAX_TOTAL_FILES = 20000
         results: List[FileParseResult] = []
 
-        for dirpath, dirnames, filenames in os.walk(repo_root):
+        for dirpath, dirnames, filenames in os.walk(repo_root, followlinks=False):
             dirnames[:] = sorted([d for d in dirnames if d not in SKIP_DIRS])
             for fn in sorted(filenames):
                 full_path = os.path.join(dirpath, fn)
                 if self.supports_file(full_path):
+                    if len(results) >= MAX_TOTAL_FILES:
+                        raise ValueError(f"Repository exceeds maximum file count limit of {MAX_TOTAL_FILES} files")
                     results.append(self.parse_file(full_path, repo_root))
 
         results.sort(key=lambda r: r.file)

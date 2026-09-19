@@ -24,7 +24,17 @@ IGNORED_SNAPSHOT_DIRS = {".git", "__pycache__", ".venv", "venv", "node_modules",
 # analyzer did.
 CACHE_SCHEMA_VERSION = "v4"  # bumped: Session 1 schema freeze v1.0.0
 SCHEMA_VERSION = "1.0.0"
-ANALYZER_VERSION = "0.10.0"  # bumped: Session 10 — Tree-sitter JS/TS parser integration
+ANALYZER_VERSION = "0.13.0"  # bumped: Session 13 — Ingestion hardening and Call Resolution cache invalidation
+
+
+def is_safe_relative_path(rel_path: str, repo_root: str) -> bool:
+    """Verifies that rel_path does not attempt path traversal outside repo_root."""
+    try:
+        full_path = os.path.abspath(os.path.join(repo_root, rel_path))
+        root_path = os.path.abspath(repo_root)
+        return os.path.commonpath([full_path, root_path]) == root_path
+    except Exception:
+        return False
 
 
 def is_test_file(rel_path: str) -> bool:

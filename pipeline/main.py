@@ -24,36 +24,74 @@ from health_score import compute_health_score
 from util import resolve_snapshot_id, try_git_head_sha, build_cache_key, CACHE_SCHEMA_VERSION, ANALYZER_VERSION, SCHEMA_VERSION
 
 
+def load_cache(cache_path: str) -> dict | None:
+    """Loads cached result if present and valid; removes corrupted cache files safely."""
+    if not os.path.exists(cache_path):
+        return None
+    try:
+        with open(cache_path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+            if isinstance(data, dict) and "schema_version" in data and "knowledge_graph" in data:
+                return data
+    except Exception as exc:
+        print(f"[cache warning] Removing corrupted cache file {cache_path}: {exc}", file=sys.stderr)
+        try:
+            os.remove(cache_path)
+        except OSError:
+            pass
+    return None
+
+
+def save_cache_atomic(cache_path: str, result: dict) -> None:
+    """Writes cache file atomically using a temporary file and os.replace."""
+    cache_dir = os.path.dirname(cache_path)
+    os.makedirs(cache_dir, exist_ok=True)
+    temp_path = f"{cache_path}.tmp.{os.getpid()}"
+    try:
+        with open(temp_path, "w", encoding="utf-8") as fh:
+            json.dump(result, fh, indent=2, sort_keys=True)
+        os.replace(temp_path, cache_path)
+    except Exception:
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+        raise
+
+
 def run_pipeline(repo_url: str | None, local_path: str | None, commit_sha: str | None, cache_dir: str) -> dict:
     cleanup_dir = None
     is_fresh_clone = False
+
     if local_path:
-        repo_root = local_path
-        # NOT trusted as a cache key on its own: a local checkout can have
-        # uncommitted changes that HEAD does not reflect. resolve_snapshot_id
-        # falls back to content-hashing precisely because of this.
-        git_sha = try_git_head_sha(local_path)
+        if not os.path.exists(local_path):
+            raise ValueError(f"Local repository path does not exist: '{local_path}'")
+        repo_root = os.path.abspath(local_path)
+        git_sha = try_git_head_sha(repo_root)
         resolved_sha = git_sha or "not-a-git-repo"
-    else:
+    elif repo_url:
         cleanup_dir = tempfile.mkdtemp(prefix="gha_repo_")
         repo_root = os.path.join(cleanup_dir, "repo")
-        resolved_sha = clone_repository(repo_url, repo_root, commit_sha)
-        is_fresh_clone = True  # safe to trust the SHA alone: nothing can have modified it since clone
-
-    snapshot_id = resolve_snapshot_id(repo_root, is_fresh_clone, resolved_sha)
-    # snapshot_id alone says nothing about whether THIS codebase's own
-    # behavior changed since a cached result was written -- versioned_key
-    # folds in schema/analyzer version so old cache entries can't be served
-    # as if they reflect a since-fixed bug.
-    versioned_key = build_cache_key(snapshot_id)
-    cache_key = f"{os.path.basename(os.path.normpath(local_path or repo_url))}@{versioned_key}"
-    cache_path = os.path.join(cache_dir, f"{cache_key.replace('/', '_')}.json")
-    if os.path.exists(cache_path):
-        with open(cache_path) as fh:
-            print(f"[cache hit] {cache_path}", file=sys.stderr)
-            return json.load(fh)
+    else:
+        raise ValueError("Either repo_url or local_path must be provided")
 
     try:
+        if repo_url:
+            resolved_sha = clone_repository(repo_url, repo_root, commit_sha)
+            is_fresh_clone = True
+
+        snapshot_id = resolve_snapshot_id(repo_root, is_fresh_clone, resolved_sha)
+        versioned_key = build_cache_key(snapshot_id)
+        repo_identifier = os.path.basename(os.path.normpath(local_path or repo_url or "repo"))
+        cache_key = f"{repo_identifier}@{versioned_key}"
+        cache_path = os.path.join(cache_dir, f"{cache_key.replace('/', '_')}.json")
+
+        cached = load_cache(cache_path)
+        if cached is not None:
+            print(f"[cache hit] {cache_path}", file=sys.stderr)
+            return cached
+
         parse_results = parse_repository(repo_root)
         parse_results.sort(key=lambda r: r.file)
         py_files_rel = [r.file for r in parse_results if not r.parse_error]
@@ -115,15 +153,12 @@ def run_pipeline(repo_url: str | None, local_path: str | None, commit_sha: str |
             "knowledge_graph": graph_data,
             "health_score": health,
         }
+
+        save_cache_atomic(cache_path, result)
+        return result
     finally:
-        if cleanup_dir:
+        if cleanup_dir and os.path.exists(cleanup_dir):
             shutil.rmtree(cleanup_dir, ignore_errors=True)
-
-    os.makedirs(cache_dir, exist_ok=True)
-    with open(cache_path, "w") as fh:
-        json.dump(result, fh, indent=2, sort_keys=True)
-
-    return result
 
 
 def main():
