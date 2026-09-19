@@ -116,20 +116,12 @@ def run_bandit(repo_root: str, prod_files_rel: list):
     is_test_file() definition as the complexity/maintainability stages.
 
     Returns (status, issues) where status is:
-      "success" -> bandit ran (exit code 0 or 1, its documented "scan
-                   completed" contract -- 1 means issues were found, 0
-                   means none were, neither is a crash) and returned
-                   parseable JSON with a results list
-      "failed"  -> bandit crashed, timed out, exited with any code other
-                   than 0/1 (previously NOT checked at all -- an unexpected
-                   exit code fell through to parsing whatever stdout
-                   happened to contain, which could silently look like a
-                   clean scan), or returned unparsable/malformed output
-                   (issues will be [] in this case -- callers MUST check
-                   status before treating [] as "no issues found")
+      "success"     -> scan completed cleanly
+      "unavailable" -> bandit executable not installed in environment
+      "failed"      -> bandit crashed, timed out, unexpected exit code
     """
     if not prod_files_rel:
-        return "success", []  # nothing to scan is a legitimate, honest success
+        return "success", []  # nothing to scan is a legitimate success
 
     abs_targets = [os.path.join(repo_root, f) for f in prod_files_rel]
     try:
@@ -141,16 +133,12 @@ def run_bandit(repo_root: str, prod_files_rel: list):
         print("[static_analysis] bandit TIMED OUT -- security status = failed", file=sys.stderr)
         return "failed", []
     except FileNotFoundError:
-        print("[static_analysis] bandit executable not found -- security status = failed", file=sys.stderr)
-        return "failed", []
+        print("[static_analysis] bandit executable not found -- security status = unavailable", file=sys.stderr)
+        return "unavailable", []
     except Exception as exc:
         print(f"[static_analysis] bandit execution error: {exc} -- security status = failed", file=sys.stderr)
         return "failed", []
 
-    # bandit's own contract: 0 = ran clean, 1 = ran and found issues.
-    # Anything else (2 = usage/internal error, or a signal-killed negative
-    # code) means the scan itself did not complete trustworthily and must
-    # never be parsed as if it did.
     if proc.returncode not in (0, 1):
         print(f"[static_analysis] bandit exited with unexpected code {proc.returncode} "
               f"-- security status = failed. stderr: {proc.stderr.strip()[:500]}", file=sys.stderr)
@@ -186,6 +174,16 @@ def analyze_repository(repo_root: str, py_files_rel: list) -> dict:
     partitions them itself using the single shared is_test_file() definition
     so complexity/maintainability/security all see the identical split.
     """
+    if not py_files_rel:
+        return {
+            "scope_policy": "production_code_only",
+            "production_files_analyzed": 0,
+            "test_files_excluded": 0,
+            "complexity": {"status": "unsupported", "results": []},
+            "maintainability": {"status": "unsupported", "results": []},
+            "security": {"status": "unsupported", "results": []},
+        }
+
     prod_files = [f for f in py_files_rel if not is_test_file(f)]
     test_files = [f for f in py_files_rel if is_test_file(f)]
 

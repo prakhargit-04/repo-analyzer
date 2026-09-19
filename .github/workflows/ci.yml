@@ -1,0 +1,33 @@
+name: GitHub Project Analyzer CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Run Pytest Test Suite
+        run: |
+          python -m pytest tests/ -v
+
+      - name: Verify Analyzer Baseline Run
+        run: |
+          python pipeline/main.py --local-path . --out local_output.json

@@ -284,7 +284,8 @@ def test_bandit_crash_does_not_produce_clean_security_score():
     finally:
         sa.subprocess.run = orig_run
 
-    assert status == "failed"
+    assert status == "unavailable"
+    assert status != "success"
     assert issues == []
 
 
