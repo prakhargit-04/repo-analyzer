@@ -17,6 +17,7 @@ from static_analysis import (
     analyze_repository, run_bandit,
     LizardAnalyzer, LIZARD_VERSION,
     SemgrepAnalyzer, SEMGREP_VERSION, _SEMGREP_BINARY,
+    GitleaksAnalyzer, GITLEAKS_VERSION, _GITLEAKS_BINARY,
 )
 import static_analysis as _sa_module
 from main import run_pipeline
@@ -497,3 +498,278 @@ class TestSemgrepAnalyzer:
         assert "semgrep_findings" in res["static_analysis"]
         sf = res["static_analysis"]["semgrep_findings"]
         assert sf["status"] in VALID_STATUS_VALUES
+
+
+class TestGitleaksAnalyzer:
+    """Contract, execution, error handling, and security tests for GitleaksAnalyzer."""
+
+    def test_gitleaks_version_constant(self):
+        assert GITLEAKS_VERSION != ""
+
+    def test_gitleaks_is_available_when_installed(self):
+        analyzer = GitleaksAnalyzer()
+        assert analyzer.is_available()[0] == (_GITLEAKS_BINARY is not None)
+
+    def test_gitleaks_provenance_tag(self):
+        analyzer = GitleaksAnalyzer()
+        assert analyzer.provenance_tag == f"gitleaks:{GITLEAKS_VERSION}"
+
+    def test_gitleaks_supports_language(self):
+        analyzer = GitleaksAnalyzer()
+        assert analyzer.supports_language("python") is True
+        assert analyzer.supports_language("java") is True
+        assert analyzer.supports_language("go") is True
+
+    def test_gitleaks_empty_file_list_returns_unsupported(self, tmp_path):
+        analyzer = GitleaksAnalyzer()
+        result = analyzer.analyze(str(tmp_path), [])
+        assert result.status == "unsupported"
+
+    def test_gitleaks_nonexistent_files_returns_unsupported(self, tmp_path):
+        analyzer = GitleaksAnalyzer()
+        result = analyzer.analyze(str(tmp_path), [str(tmp_path / "ghost.py")])
+        assert result.status == "unsupported"
+
+    def test_gitleaks_unavailable_simulation(self, monkeypatch, tmp_path):
+        """Simulate missing gitleaks binary to verify unavailable status."""
+        f = tmp_path / "app.py"
+        f.write_text("x = 1\n", encoding="utf-8")
+        monkeypatch.setattr(_sa_module, "_GITLEAKS_BINARY", None)
+        analyzer = GitleaksAnalyzer()
+        result = analyzer.analyze(str(tmp_path), [str(f)])
+        assert result.status == "unavailable"
+
+    def test_gitleaks_timeout_simulation(self, monkeypatch, tmp_path):
+        """Simulate timeout during gitleaks execution."""
+        import subprocess as _sp
+        f = tmp_path / "app.py"
+        f.write_text("x = 1\n", encoding="utf-8")
+
+        def mock_run(*args, **kwargs):
+            raise _sp.TimeoutExpired(cmd="gitleaks", timeout=180)
+
+        monkeypatch.setattr(_sa_module, "_GITLEAKS_BINARY", "/fake/gitleaks")
+        monkeypatch.setattr("subprocess.run", mock_run)
+        analyzer = GitleaksAnalyzer()
+        result = analyzer.analyze(str(tmp_path), [str(f)])
+        assert result.status == "failed"
+        assert any("timed out" in e for e in result.errors)
+
+    def test_gitleaks_bad_exit_code(self, monkeypatch, tmp_path):
+        """Exit codes >= 2 represent execution failures."""
+        f = tmp_path / "app.py"
+        f.write_text("x = 1\n", encoding="utf-8")
+
+        class FakeProc:
+            returncode = 2
+            stdout = ""
+            stderr = "Fatal CLI error"
+
+        monkeypatch.setattr(_sa_module, "_GITLEAKS_BINARY", "/fake/gitleaks")
+        monkeypatch.setattr("subprocess.run", lambda *a, **kw: FakeProc())
+        analyzer = GitleaksAnalyzer()
+        result = analyzer.analyze(str(tmp_path), [str(f)])
+        assert result.status == "failed"
+        assert "Fatal CLI error" in result.errors
+
+    def test_gitleaks_unparsable_json(self, monkeypatch, tmp_path):
+        """Malformed JSON report yields status failed."""
+        f = tmp_path / "app.py"
+        f.write_text("x = 1\n", encoding="utf-8")
+
+        class FakeProc:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        def fake_run(cmd, **kwargs):
+            r_idx = cmd.index("-r") + 1
+            report_path = cmd[r_idx]
+            with open(report_path, "w", encoding="utf-8") as rf:
+                rf.write("{not valid json")
+            return FakeProc()
+
+        monkeypatch.setattr(_sa_module, "_GITLEAKS_BINARY", "/fake/gitleaks")
+        monkeypatch.setattr("subprocess.run", fake_run)
+        analyzer = GitleaksAnalyzer()
+        result = analyzer.analyze(str(tmp_path), [str(f)])
+        assert result.status == "failed"
+
+    def test_gitleaks_non_list_json(self, monkeypatch, tmp_path):
+        """JSON output that is not a list yields status failed."""
+        import json as _json
+        f = tmp_path / "app.py"
+        f.write_text("x = 1\n", encoding="utf-8")
+
+        class FakeProc:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        def fake_run(cmd, **kwargs):
+            r_idx = cmd.index("-r") + 1
+            report_path = cmd[r_idx]
+            with open(report_path, "w", encoding="utf-8") as rf:
+                _json.dump({"error": "object not list"}, rf)
+            return FakeProc()
+
+        monkeypatch.setattr(_sa_module, "_GITLEAKS_BINARY", "/fake/gitleaks")
+        monkeypatch.setattr("subprocess.run", fake_run)
+        analyzer = GitleaksAnalyzer()
+        result = analyzer.analyze(str(tmp_path), [str(f)])
+        assert result.status == "failed"
+        assert any("must be a list" in e for e in result.errors)
+
+    def test_gitleaks_clean_repository_is_success(self, monkeypatch, tmp_path):
+        """Exit code 0 with empty results list is success."""
+        import json as _json
+        f = tmp_path / "app.py"
+        f.write_text("x = 1\n", encoding="utf-8")
+
+        class FakeProc:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        def fake_run(cmd, **kwargs):
+            r_idx = cmd.index("-r") + 1
+            report_path = cmd[r_idx]
+            with open(report_path, "w", encoding="utf-8") as rf:
+                _json.dump([], rf)
+            return FakeProc()
+
+        monkeypatch.setattr(_sa_module, "_GITLEAKS_BINARY", "/fake/gitleaks")
+        monkeypatch.setattr("subprocess.run", fake_run)
+        analyzer = GitleaksAnalyzer()
+        result = analyzer.analyze(str(tmp_path), [str(f)])
+        assert result.status == "success"
+        assert result.results == []
+
+    def test_gitleaks_finding_field_schema_and_redaction(self, monkeypatch, tmp_path):
+        """Findings carry rule_id, file, line, col, description, severity, entropy, fingerprint, BUT NEVER secret material."""
+        import json as _json
+        f = tmp_path / "secret.py"
+        f.write_text("MOCK_KEY = 'super_secret_value'\n", encoding="utf-8")
+
+        raw_finding = {
+            "RuleID": "generic-api-key",
+            "Description": "Generic API Key",
+            "StartLine": 1,
+            "EndLine": 1,
+            "StartColumn": 12,
+            "EndColumn": 30,
+            "Match": "super_secret_value",
+            "Secret": "super_secret_value",
+            "File": str(f),
+            "Entropy": 4.5,
+            "Fingerprint": f"{f}:generic-api-key:1",
+        }
+
+        class FakeProc:
+            returncode = 1
+            stdout = ""
+            stderr = ""
+
+        def fake_run(cmd, **kwargs):
+            r_idx = cmd.index("-r") + 1
+            report_path = cmd[r_idx]
+            with open(report_path, "w", encoding="utf-8") as rf:
+                _json.dump([raw_finding], rf)
+            return FakeProc()
+
+        monkeypatch.setattr(_sa_module, "_GITLEAKS_BINARY", "/fake/gitleaks")
+        monkeypatch.setattr("subprocess.run", fake_run)
+        analyzer = GitleaksAnalyzer()
+        result = analyzer.analyze(str(tmp_path), [str(f)])
+        assert result.status == "success"
+        assert len(result.results) == 1
+        res = result.results[0]
+        assert res["rule_id"] == "generic-api-key"
+        assert "secret.py" in res["file"]
+        assert res["line"] == 1
+        assert res["col"] == 12
+        assert res["description"] == "Generic API Key"
+        assert res["severity"] == "HIGH"
+        assert res["entropy"] == 4.5
+        assert res["provenance"].startswith("gitleaks:")
+        # Security assertion: raw secret and match MUST NOT be in output dictionary!
+        assert "Secret" not in res
+        assert "Match" not in res
+        assert "super_secret_value" not in str(res)
+
+    def test_gitleaks_findings_deterministic_order(self, monkeypatch, tmp_path):
+        """Findings are sorted deterministically by file -> line -> col -> rule_id."""
+        import json as _json
+        f = tmp_path / "secrets.py"
+        f.write_text("x = 1\n" * 10, encoding="utf-8")
+
+        def make_raw(line, col, rule):
+            return {
+                "RuleID": rule,
+                "Description": "desc",
+                "StartLine": line,
+                "StartColumn": col,
+                "Match": "REDACTED",
+                "Secret": "REDACTED",
+                "File": str(f),
+                "Entropy": 3.0,
+                "Fingerprint": f"{f}:{rule}:{line}",
+            }
+
+        raw_list = [
+            make_raw(5, 2, "rule-b"),
+            make_raw(1, 10, "rule-a"),
+            make_raw(1, 10, "rule-z"),
+            make_raw(3, 1, "rule-c"),
+        ]
+
+        class FakeProc:
+            returncode = 1
+            stdout = ""
+            stderr = ""
+
+        def fake_run(cmd, **kwargs):
+            r_idx = cmd.index("-r") + 1
+            report_path = cmd[r_idx]
+            with open(report_path, "w", encoding="utf-8") as rf:
+                _json.dump(raw_list, rf)
+            return FakeProc()
+
+        monkeypatch.setattr(_sa_module, "_GITLEAKS_BINARY", "/fake/gitleaks")
+        monkeypatch.setattr("subprocess.run", fake_run)
+        analyzer = GitleaksAnalyzer()
+        result = analyzer.analyze(str(tmp_path), [str(f)])
+        assert result.status == "success"
+        order = [(r["line"], r["col"], r["rule_id"]) for r in result.results]
+        assert order == sorted(order)
+
+    def test_gitleaks_safe_env_strips_secrets(self):
+        """_safe_env() strips GITLEAKS_CONFIG and SEMGREP tokens."""
+        import os as _os
+        with pytest.MonkeyPatch().context() as m:
+            m.setenv("GITLEAKS_CONFIG", "/path/to/bad.toml")
+            m.setenv("GITLEAKS_CONFIG_TOML", "bad content")
+            m.setenv("PATH", _os.environ.get("PATH", ""))
+            env = GitleaksAnalyzer._safe_env()
+        assert "GITLEAKS_CONFIG" not in env
+        assert "GITLEAKS_CONFIG_TOML" not in env
+        assert "PATH" in env
+
+    def test_analyze_repository_includes_gitleaks_findings(self):
+        """analyze_repository() output must include the 'gitleaks_findings' key."""
+        fixture = os.path.join(FIXTURES_DIR, "success_repo")
+        py_files = [f for f in os.listdir(fixture) if f.endswith(".py")]
+        result = analyze_repository(fixture, py_files)
+        assert "gitleaks_findings" in result
+        gf = result["gitleaks_findings"]
+        assert gf["status"] in VALID_STATUS_VALUES
+        assert "results" in gf
+
+    def test_pipeline_gitleaks_findings_present(self):
+        """run_pipeline output must include gitleaks_findings in static_analysis."""
+        fixture = os.path.join(FIXTURES_DIR, "success_repo")
+        res = run_pipeline(None, fixture, None, os.path.join(fixture, ".cache"))
+        assert "gitleaks_findings" in res["static_analysis"]
+        gf = res["static_analysis"]["gitleaks_findings"]
+        assert gf["status"] in VALID_STATUS_VALUES
+

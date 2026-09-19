@@ -27,6 +27,7 @@ import subprocess
 import json
 import os
 import sys
+import tempfile
 from dataclasses import dataclass, asdict, field
 from importlib.metadata import version as pkg_version, PackageNotFoundError
 from typing import Any, Dict, List, Optional
@@ -618,6 +619,288 @@ class SemgrepAnalyzer(BaseAnalyzer):
 _SEMGREP_ANALYZER = SemgrepAnalyzer()
 
 
+def _detect_gitleaks() -> tuple[Optional[str], str]:
+    binary = shutil.which("gitleaks")
+    if not binary:
+        return None, "unavailable"
+    try:
+        proc = subprocess.run(
+            [binary, "version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            ver = proc.stdout.strip()
+            if ver.lower().startswith("gitleaks version "):
+                ver = ver[len("gitleaks version "):].strip()
+            elif ver.lower().startswith("v"):
+                ver = ver[1:].strip()
+            return binary, ver
+        return binary, "unknown"
+    except Exception:
+        return binary, "unknown"
+
+
+_GITLEAKS_BINARY, GITLEAKS_VERSION = _detect_gitleaks()
+
+
+@dataclass
+class GitleaksFinding:
+    """
+    Normalized single Gitleaks secret detection finding.
+
+    SECURITY MANDATE: Raw secret material ('Secret' or 'Match' strings from
+    Gitleaks) MUST NEVER be stored, serialized, or exposed in output. Only
+    metadata, location, rule IDs, descriptions, entropy, and fingerprints
+    are captured.
+    """
+    rule_id: str
+    file: str
+    line: int
+    col: int
+    description: str
+    severity: str = "HIGH"
+    entropy: float = 0.0
+    fingerprint: str = ""
+    provenance: str = ""
+
+    def __post_init__(self):
+        if not self.provenance:
+            self.provenance = f"gitleaks:{GITLEAKS_VERSION}"
+
+
+class GitleaksAnalyzer(BaseAnalyzer):
+    """
+    Secret-detection analyzer backed by the Gitleaks binary.
+
+    Security model
+    --------------
+    * Repository contents are treated as UNTRUSTED INPUT.
+    * We NEVER execute repository code (Gitleaks is a regex/entropy scanner).
+    * We pass --no-git so scanning acts directly on snapshot files deterministically.
+    * We pass --redact so Gitleaks stdout/reports mask secrets.
+    * We explicitly OMIT raw secret strings ('Secret'/'Match') from our output data model.
+    * We pass -i non_existent_file to prevent repo-provided .gitleaksignore from ignoring leaks.
+    * We pass env sanitized via _safe_env() to prevent GITLEAKS_CONFIG env injection.
+    * We cap subprocess timeout at 180s to prevent DoS.
+
+    Contract
+    --------
+      - unavailable  : gitleaks binary not on PATH
+      - unsupported  : empty/non-existent file list
+      - success      : scan completed cleanly (0 leaks OR 1+ leaks detected)
+      - partial      : scan completed with individual item parsing errors
+      - failed       : exit code 2+, malformed JSON output, timeout
+    """
+
+    TIMEOUT_SECONDS: int = 180
+
+    def __init__(self) -> None:
+        super().__init__(name="gitleaks", version=GITLEAKS_VERSION)
+
+    def is_available(self) -> tuple[bool, Optional[str]]:
+        if _GITLEAKS_BINARY is None:
+            return False, "'gitleaks' binary not found on PATH."
+        return True, None
+
+    def supports_language(self, language: str) -> bool:
+        return True
+
+    def analyze(self, repo_root: str, files: List[str]) -> AnalyzerResult:
+        avail, err = self.is_available()
+        if not avail:
+            return AnalyzerResult(
+                status=AnalyzerStatus.UNAVAILABLE,
+                errors=[err] if err else [],
+                provenance=self.provenance_tag,
+                metadata={"reason": err or "gitleaks executable not found on PATH"},
+            )
+
+        abs_files = sorted({
+            (f if os.path.isabs(f) else os.path.join(repo_root, f))
+            for f in files
+            if os.path.isfile(f if os.path.isabs(f) else os.path.join(repo_root, f))
+        })
+        if not abs_files:
+            return AnalyzerResult(
+                status=AnalyzerStatus.UNSUPPORTED,
+                provenance=self.provenance_tag,
+                metadata={"reason": "None of the provided file paths exist on disk"},
+            )
+
+        temp_fd, temp_report_path = tempfile.mkstemp(suffix=".json", prefix="gitleaks_report_")
+        os.close(temp_fd)
+
+        cmd = [
+            _GITLEAKS_BINARY,
+            "detect",
+            "--no-git",
+            "--source", repo_root,
+            "-f", "json",
+            "-r", temp_report_path,
+            "--redact",
+            "--no-banner",
+            "-i", os.path.join(repo_root, ".non_existent_gitleaks_ignore"),
+            "--log-level", "error",
+        ]
+
+        try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=self.TIMEOUT_SECONDS,
+                cwd=repo_root,
+                env=self._safe_env(),
+            )
+        except subprocess.TimeoutExpired:
+            if os.path.exists(temp_report_path):
+                os.remove(temp_report_path)
+            print(
+                f"[static_analysis] gitleaks TIMED OUT after {self.TIMEOUT_SECONDS}s",
+                file=sys.stderr,
+            )
+            return AnalyzerResult(
+                status=AnalyzerStatus.FAILED,
+                provenance=self.provenance_tag,
+                errors=[f"gitleaks execution timed out after {self.TIMEOUT_SECONDS}s"],
+            )
+        except Exception as exc:
+            if os.path.exists(temp_report_path):
+                os.remove(temp_report_path)
+            return AnalyzerResult(
+                status=AnalyzerStatus.FAILED,
+                provenance=self.provenance_tag,
+                errors=[f"Subprocess invocation error: {exc!r}"],
+            )
+
+        # Gitleaks exit codes: 0 = no leaks, 1 = leaks found.
+        # Both represent successful scan execution. Exit codes >= 2 indicate errors.
+        if proc.returncode not in (0, 1):
+            if os.path.exists(temp_report_path):
+                os.remove(temp_report_path)
+            print(
+                f"[static_analysis] gitleaks exited with unexpected code {proc.returncode}",
+                file=sys.stderr,
+            )
+            return AnalyzerResult(
+                status=AnalyzerStatus.FAILED,
+                provenance=self.provenance_tag,
+                errors=[proc.stderr.strip() or f"Unexpected exit code {proc.returncode}"],
+            )
+
+        raw_json = ""
+        scan_errors: List[str] = []
+        if proc.stderr and proc.stderr.strip():
+            scan_errors.append(proc.stderr.strip())
+
+        try:
+            if os.path.exists(temp_report_path):
+                with open(temp_report_path, "r", encoding="utf-8") as f:
+                    raw_json = f.read().strip()
+                os.remove(temp_report_path)
+            else:
+                return AnalyzerResult(
+                    status=AnalyzerStatus.FAILED,
+                    provenance=self.provenance_tag,
+                    errors=["Gitleaks did not produce a report file"],
+                )
+        except Exception as exc:
+            if os.path.exists(temp_report_path):
+                os.remove(temp_report_path)
+            return AnalyzerResult(
+                status=AnalyzerStatus.FAILED,
+                provenance=self.provenance_tag,
+                errors=[f"Failed to read report file: {exc!r}"],
+            )
+
+        if not raw_json:
+            raw_results = []
+        else:
+            try:
+                raw_results = json.loads(raw_json)
+            except json.JSONDecodeError as exc:
+                return AnalyzerResult(
+                    status=AnalyzerStatus.FAILED,
+                    provenance=self.provenance_tag,
+                    errors=[f"Unparsable JSON from gitleaks: {exc!r}"],
+                )
+
+        if not isinstance(raw_results, list):
+            return AnalyzerResult(
+                status=AnalyzerStatus.FAILED,
+                provenance=self.provenance_tag,
+                errors=["gitleaks JSON root output must be a list"],
+            )
+
+        # Filter findings to only those matching our target files
+        target_abs_norm = {os.path.abspath(target) for target in abs_files}
+        findings: List[GitleaksFinding] = []
+        parse_errors: List[str] = []
+
+        for r in raw_results:
+            try:
+                if not isinstance(r, dict):
+                    parse_errors.append(f"Invalid finding object: {r!r}")
+                    continue
+                file_path = r.get("File", "")
+                abs_f = file_path if os.path.isabs(file_path) else os.path.join(repo_root, file_path)
+                abs_f_norm = os.path.abspath(abs_f)
+
+                if abs_f_norm in target_abs_norm:
+                    rel_path = os.path.relpath(abs_f_norm, repo_root).replace("\\", "/")
+                    findings.append(GitleaksFinding(
+                        rule_id=str(r.get("RuleID", "unknown")),
+                        file=rel_path,
+                        line=int(r.get("StartLine", 0)),
+                        col=int(r.get("StartColumn", 0)),
+                        description=str(r.get("Description", "")),
+                        severity="HIGH",
+                        entropy=float(r.get("Entropy", 0.0)),
+                        fingerprint=str(r.get("Fingerprint", "")),
+                    ))
+            except Exception as exc:  # noqa: BLE001
+                parse_errors.append(f"Failed to parse gitleaks finding: {exc!r}")
+
+        # Deterministic sorting: file -> line -> col -> rule_id
+        findings.sort(key=lambda f: (f.file, f.line, f.col, f.rule_id))
+
+        all_errors = scan_errors + parse_errors
+        status = AnalyzerStatus.SUCCESS
+        if parse_errors and not findings:
+            status = AnalyzerStatus.FAILED
+        elif parse_errors:
+            status = AnalyzerStatus.PARTIAL
+
+        return AnalyzerResult(
+            status=status,
+            results=[asdict(f) for f in findings],
+            errors=all_errors if all_errors else [],
+            provenance=self.provenance_tag,
+            metadata={
+                "gitleaks_version": GITLEAKS_VERSION,
+                "findings": len(findings),
+                "scan_errors": len(scan_errors),
+            },
+        )
+
+    @staticmethod
+    def _safe_env() -> Dict[str, str]:
+        _SECRET_PREFIXES = (
+            "GITLEAKS_",
+            "SEMGREP_",
+        )
+        return {
+            k: v for k, v in os.environ.items()
+            if not any(k.upper().startswith(p) for p in _SECRET_PREFIXES)
+        }
+
+
+# Module-level singleton for GitleaksAnalyzer.
+_GITLEAKS_ANALYZER = GitleaksAnalyzer()
+
+
 def analyze_repository(repo_root: str, py_files_rel: list) -> dict:
     """
     py_files_rel: ALL python files found (test + production). This function
@@ -630,6 +913,9 @@ def analyze_repository(repo_root: str, py_files_rel: list) -> dict:
 
     Semgrep runs over production files using the Semgrep-managed OSS ruleset;
     it supplements (not replaces) Bandit's Python-specific security analysis.
+
+    Gitleaks runs over production files to detect hardcoded secrets without
+    exposing raw secret strings in output.
     """
     if not py_files_rel:
         return {
@@ -641,6 +927,7 @@ def analyze_repository(repo_root: str, py_files_rel: list) -> dict:
             "security": {"status": "unsupported", "results": []},
             "lizard_complexity": {"status": "unsupported", "results": []},
             "semgrep_findings": {"status": "unsupported", "results": []},
+            "gitleaks_findings": {"status": "unsupported", "results": []},
         }
 
     prod_files = [f for f in py_files_rel if not is_test_file(f)]
@@ -672,15 +959,17 @@ def analyze_repository(repo_root: str, py_files_rel: list) -> dict:
     security_status, security_results = run_bandit(repo_root, prod_files)
 
     # --- Lizard (language-agnostic cyclomatic complexity) ---
-    # Converts relative paths to absolute before passing to LizardAnalyzer.
     abs_prod_files = [os.path.join(repo_root, f) for f in prod_files]
     lizard_result = _LIZARD_ANALYZER.analyze(repo_root, abs_prod_files)
     lizard_dict = lizard_result.to_dict()
 
     # --- Semgrep (SAST pattern-based security/bug-finding) ---
-    # Uses the same absolute-path list as Lizard (production files only).
     semgrep_result = _SEMGREP_ANALYZER.analyze(repo_root, abs_prod_files)
     semgrep_dict = semgrep_result.to_dict()
+
+    # --- Gitleaks (secret detection) ---
+    gitleaks_result = _GITLEAKS_ANALYZER.analyze(repo_root, abs_prod_files)
+    gitleaks_dict = gitleaks_result.to_dict()
 
     return {
         "scope_policy": "production_code_only",
@@ -691,4 +980,5 @@ def analyze_repository(repo_root: str, py_files_rel: list) -> dict:
         "security": {"status": security_status, "results": [asdict(s) for s in security_results]},
         "lizard_complexity": lizard_dict,
         "semgrep_findings": semgrep_dict,
+        "gitleaks_findings": gitleaks_dict,
     }
