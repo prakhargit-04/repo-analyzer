@@ -21,7 +21,7 @@ from parse_python import parse_repository
 from static_analysis import analyze_repository
 from graph_builder import build_graph, graph_summary
 from health_score import compute_health_score
-from util import resolve_snapshot_id, try_git_head_sha, build_cache_key, CACHE_SCHEMA_VERSION, ANALYZER_VERSION
+from util import resolve_snapshot_id, try_git_head_sha, build_cache_key, CACHE_SCHEMA_VERSION, ANALYZER_VERSION, SCHEMA_VERSION
 
 
 def run_pipeline(repo_url: str | None, local_path: str | None, commit_sha: str | None, cache_dir: str) -> dict:
@@ -55,42 +55,44 @@ def run_pipeline(repo_url: str | None, local_path: str | None, commit_sha: str |
 
     try:
         parse_results = parse_repository(repo_root)
+        parse_results.sort(key=lambda r: r.file)
         py_files_rel = [r.file for r in parse_results if not r.parse_error]
 
         analysis = analyze_repository(repo_root, py_files_rel)
         g = build_graph(parse_results)
         summary = graph_summary(g)
-        graph_data = {
-    "nodes": [
-        {
-            "id": node_id,
-            **attributes
-        }
-        for node_id, attributes in g.nodes(data=True)
-    ],
-    "edges": [
-        {
-            "source": source,
-            "target": target,
-            **attributes
-        }
-        for source, target, attributes in g.edges(data=True)
-    ]
-}
+
+        nodes = sorted(
+            [{"id": node_id, **attributes} for node_id, attributes in g.nodes(data=True)],
+            key=lambda n: str(n["id"])
+        )
+        edges = sorted(
+            [{"source": source, "target": target, **attributes} for source, target, attributes in g.edges(data=True)],
+            key=lambda e: (str(e["source"]), str(e["target"]), str(e.get("relation", "")), str(e.get("raw_call", "")))
+        )
+        graph_data = {"nodes": nodes, "edges": edges}
+
         health = compute_health_score(analysis)
+        parse_errors = sorted(
+            [{"file": r.file, "error": r.parse_error} for r in parse_results if r.parse_error],
+            key=lambda pe: pe["file"]
+        )
 
         result = {
+            "schema_version": SCHEMA_VERSION,
+            "cache_schema_version": CACHE_SCHEMA_VERSION,
+            "analyzer_version": ANALYZER_VERSION,
             "repository": repo_url or local_path,
             "commit_sha": resolved_sha,
             "cache_snapshot_id": snapshot_id,
-            "cache_schema_version": CACHE_SCHEMA_VERSION,
-            "analyzer_version": ANALYZER_VERSION,
             "cache_key_basis": "git_sha (fresh clone, trusted)" if is_fresh_clone
                                else "content_hash (local path -- git HEAD alone is not "
                                     "trusted because working tree may have uncommitted changes)",
             "analyzed_at_utc": datetime.now(timezone.utc).isoformat(),
+            "languages": ["python"],
+            "analysis_status": health["status"],
             "files_analyzed": len(py_files_rel),
-            "parse_errors": [{"file": r.file, "error": r.parse_error} for r in parse_results if r.parse_error],
+            "parse_errors": parse_errors,
             "static_analysis": analysis,
             "knowledge_graph_summary": summary,
             "knowledge_graph": graph_data,
@@ -102,7 +104,7 @@ def run_pipeline(repo_url: str | None, local_path: str | None, commit_sha: str |
 
     os.makedirs(cache_dir, exist_ok=True)
     with open(cache_path, "w") as fh:
-        json.dump(result, fh, indent=2)
+        json.dump(result, fh, indent=2, sort_keys=True)
 
     return result
 
@@ -119,7 +121,7 @@ def main():
 
     result = run_pipeline(args.repo_url, args.local_path, args.commit_sha, args.cache_dir)
 
-    output = json.dumps(result, indent=2)
+    output = json.dumps(result, indent=2, sort_keys=True)
     if args.out:
         with open(args.out, "w") as fh:
             fh.write(output)

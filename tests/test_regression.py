@@ -466,3 +466,75 @@ def test_test_files_excluded_consistently_across_all_three_metrics():
         complexity_files = {r["file"] for r in result["complexity"]["results"]}
         assert "tests/test_app.py" not in complexity_files
         assert "app.py" in complexity_files
+
+
+# ---------------------------------------------------------------------------
+# 7. Session 1 Canonical Schema Contract & Deterministic Serialization
+# ---------------------------------------------------------------------------
+
+def test_canonical_schema_top_level_fields():
+    """Verify that run_pipeline includes all frozen canonical schema fields."""
+    from main import run_pipeline
+    from util import SCHEMA_VERSION, CACHE_SCHEMA_VERSION, ANALYZER_VERSION
+
+    with tempfile.TemporaryDirectory() as d:
+        file = os.path.join(d, "main.py")
+        with open(file, "w") as fh:
+            fh.write("def hello():\n    return 'world'\n")
+
+        res = run_pipeline(None, d, None, os.path.join(d, ".cache"))
+
+        assert res["schema_version"] == SCHEMA_VERSION
+        assert res["cache_schema_version"] == CACHE_SCHEMA_VERSION
+        assert res["analyzer_version"] == ANALYZER_VERSION
+        assert res["languages"] == ["python"]
+        assert res["analysis_status"] in ("complete", "partial", "failed")
+        assert "repository" in res
+        assert "commit_sha" in res
+        assert "cache_snapshot_id" in res
+        assert "cache_key_basis" in res
+        assert "analyzed_at_utc" in res
+        assert "files_analyzed" in res
+        assert "parse_errors" in res
+        assert "static_analysis" in res
+        assert "knowledge_graph_summary" in res
+        assert "knowledge_graph" in res
+        assert "health_score" in res
+
+
+def test_deterministic_serialization_reproducibility():
+    """Verify that output serialization is byte-for-byte deterministic."""
+    import json
+    from main import run_pipeline
+
+    with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as c1, tempfile.TemporaryDirectory() as c2:
+        with open(os.path.join(d, "b.py"), "w") as fh:
+            fh.write("def b(): pass\n")
+        with open(os.path.join(d, "a.py"), "w") as fh:
+            fh.write("def a(): pass\n")
+
+        res1 = run_pipeline(None, d, None, c1)
+        res2 = run_pipeline(None, d, None, c2)
+
+        # remove timestamp before comparison
+        res1_clean = {k: v for k, v in res1.items() if k != "analyzed_at_utc"}
+        res2_clean = {k: v for k, v in res2.items() if k != "analyzed_at_utc"}
+
+        str1 = json.dumps(res1_clean, indent=2, sort_keys=True)
+        str2 = json.dumps(res2_clean, indent=2, sort_keys=True)
+
+        assert str1 == str2, "Pipeline output is not deterministically ordered"
+
+
+def test_unsupported_and_unavailable_status_handling():
+    """Verify health score handles 'unsupported' and 'unavailable' component statuses cleanly."""
+    analysis = {
+        "complexity": {"status": "success", "results": [{"rank": "A"}]},
+        "maintainability": {"status": "unsupported", "results": []},
+        "security": {"status": "unavailable", "results": []},
+    }
+    score = compute_health_score(analysis)
+    assert score["sub_scores"]["complexity"] == 100.0
+    assert score["sub_scores"]["maintainability"] is None
+    assert score["sub_scores"]["security"] is None
+    assert score["status"] == "partial"

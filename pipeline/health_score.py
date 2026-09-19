@@ -83,13 +83,13 @@ from __future__ import annotations
 RANK_POINTS = {"A": 100, "B": 85, "C": 70, "D": 50, "E": 30, "F": 10}
 SEVERITY_PENALTY = {"HIGH": 15, "MEDIUM": 7, "LOW": 2}
 WEIGHTS = {"complexity": 0.35, "maintainability": 0.35, "security": 0.30}
-VALID_COMPONENT_STATUSES = {"success", "partial", "failed"}
+VALID_COMPONENT_STATUSES = {"success", "partial", "failed", "unsupported", "unavailable"}
 
 
 def _complexity_subscore(block: dict):
     if block["status"] not in VALID_COMPONENT_STATUSES:
         raise ValueError(f"Unknown analysis status: {block['status']!r}")
-    if block["status"] == "failed":
+    if block["status"] in ("failed", "unsupported", "unavailable"):
         return None
     results = block["results"]
     if not results:
@@ -101,7 +101,7 @@ def _complexity_subscore(block: dict):
 def _maintainability_subscore(block: dict):
     if block["status"] not in VALID_COMPONENT_STATUSES:
         raise ValueError(f"Unknown analysis status: {block['status']!r}")
-    if block["status"] == "failed":
+    if block["status"] in ("failed", "unsupported", "unavailable"):
         return None
     results = block["results"]
     if not results:
@@ -113,7 +113,7 @@ def _maintainability_subscore(block: dict):
 def _security_subscore(block: dict):
     if block["status"] not in VALID_COMPONENT_STATUSES:
         raise ValueError(f"Unknown analysis status: {block['status']!r}")
-    if block["status"] == "failed":
+    if block["status"] in ("failed", "unsupported", "unavailable"):
         return None
     score = 100.0
     for issue in block["results"]:

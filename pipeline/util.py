@@ -22,7 +22,8 @@ IGNORED_SNAPSHOT_DIRS = {".git", "__pycache__", ".venv", "venv", "node_modules",
 # can never be served as if it reflects the fixed code. Snapshot identity
 # alone is not enough for this: the repo content didn't change, the
 # analyzer did.
-CACHE_SCHEMA_VERSION = "v3"
+CACHE_SCHEMA_VERSION = "v4"  # bumped: Session 1 schema freeze v1.0.0
+SCHEMA_VERSION = "1.0.0"
 ANALYZER_VERSION = "0.2.0"  # bumped: weights_used renormalization + duplicate-name fixes changed output
 
 
