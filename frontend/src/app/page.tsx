@@ -1,395 +1,148 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import ReactFlow, {
-  Background,
-  Controls,
-  MiniMap,
-  Node,
-  Edge,
-  Position,
-} from "reactflow";
-import "reactflow/dist/style.css";
-
-type GraphNode = {
-  id: string;
-  type?: string;
-  name?: string;
-  file?: string;
-  start_line?: number;
-  end_line?: number;
-  class_owner?: string | null;
-  provenance?: string;
-};
-
-type GraphEdge = {
-  source: string;
-  target: string;
-  relation?: string;
-  confidence?: string;
-  raw_call?: string;
-  reason?: string;
-  provenance?: string;
-  line?: number;
-  alias?: string | null;
-};
-
-type AnalysisData = {
-  repository: string;
-  commit_sha: string;
-  files_analyzed: number;
-  knowledge_graph_summary: {
-    total_nodes: number;
-    total_edges: number;
-    call_edges_total: number;
-    call_edges_resolved_pct: number;
-  };
-  knowledge_graph: {
-    nodes: GraphNode[];
-    edges: GraphEdge[];
-  };
-  health_score: {
-    composite_health_score: number;
-    status: string;
-    sub_scores: {
-      complexity: number;
-      maintainability: number;
-      security: number;
-    };
-  };
-};
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { submitAnalysis } from "@/lib/api";
 
 export default function Home() {
-  const [data, setData] = useState<AnalysisData | null>(null);
+  const router = useRouter();
 
-  useEffect(() => {
-    fetch("/output.json")
-      .then((response) => response.json())
-      .then((result) => setData(result));
-  }, []);
+  const [repoUrl, setRepoUrl] = useState<string>("https://github.com/pytest-dev/iniconfig");
+  const [commitSha, setCommitSha] = useState<string>("");
+  const [submitting, setSubmitting] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const fileNodes = useMemo(() => {
-    if (!data) {
-      return [];
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanUrl = repoUrl.trim();
+    if (!cleanUrl) return;
+
+    try {
+      setSubmitting(true);
+      setError(null);
+
+      const job = await submitAnalysis({
+        repo_url: cleanUrl,
+        commit_sha: commitSha.trim() || undefined,
+      });
+
+      // Redirect to analysis job progress page
+      router.push(`/analyses/${job.job_id}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to submit repository for analysis.";
+      setError(msg);
+    } finally {
+
+      setSubmitting(false);
     }
-
-    return data.knowledge_graph.nodes.filter(
-      (node) => node.type === "file"
-    );
-  }, [data]);
-
-  const fileNodeMap = useMemo(() => {
-    const map = new Map<string, string>();
-
-    if (!data) {
-      return map;
-    }
-
-    data.knowledge_graph.nodes.forEach((node) => {
-      if (node.type === "function" || node.type === "class") {
-        if (node.file) {
-          map.set(node.id, node.file);
-        }
-      }
-
-      if (node.type === "file") {
-        map.set(node.id, node.id);
-      }
-    });
-
-    return map;
-  }, [data]);
-
-  const architectureEdges = useMemo(() => {
-    if (!data) {
-      return [];
-    }
-
-    const edgeSet = new Set<string>();
-
-    return data.knowledge_graph.edges
-      .filter((edge) => edge.relation === "calls")
-      .map((edge) => {
-        const sourceFile = fileNodeMap.get(edge.source);
-        const targetFile = fileNodeMap.get(edge.target);
-
-        if (!sourceFile || !targetFile || sourceFile === targetFile) {
-          return null;
-        }
-
-        const key = `${sourceFile}->${targetFile}`;
-
-        if (edgeSet.has(key)) {
-          return null;
-        }
-
-        edgeSet.add(key);
-
-        return {
-          id: `architecture-${sourceFile}-${targetFile}`,
-          source: sourceFile,
-          target: targetFile,
-          animated: true,
-          label: "calls",
-          style: {
-            strokeWidth: 2,
-          },
-        };
-      })
-      .filter(Boolean) as Edge[];
-  }, [data, fileNodeMap]);
-
-  const flowNodes = useMemo<Node[]>(() => {
-    if (!data) {
-      return [];
-    }
-
-    const columns = 3;
-
-    return fileNodes.map((node, index) => {
-      const column = index % columns;
-      const row = Math.floor(index / columns);
-
-      return {
-        id: node.id,
-        position: {
-          x: column * 420,
-          y: row * 220,
-        },
-        sourcePosition: Position.Right,
-        targetPosition: Position.Left,
-        data: {
-          label: (
-            <div className="w-[250px]">
-              <div className="text-base font-semibold text-white">
-                {node.id}
-              </div>
-
-              <div className="text-xs text-slate-400 mt-2">
-                File
-              </div>
-
-              <div className="text-xs text-slate-500 mt-1">
-                {node.provenance || "filesystem-walk"}
-              </div>
-            </div>
-          ),
-        },
-        style: {
-          background: "#0f172a",
-          border: "1px solid #475569",
-          borderRadius: "12px",
-          color: "white",
-          padding: "14px",
-          width: 280,
-        },
-      };
-    });
-  }, [data, fileNodes]);
-
-  if (!data) {
-    return (
-      <main className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
-        Loading analyzer results...
-      </main>
-    );
-  }
+  };
 
   return (
     <main className="min-h-screen bg-slate-950 text-white p-8">
-      <div className="max-w-7xl mx-auto">
-        <h1 className="text-4xl font-bold">
-          GitHub Project Analyzer
-        </h1>
+      <div className="max-w-4xl mx-auto py-12">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-4xl font-bold">GitHub Project Analyzer</h1>
+            <p className="text-slate-400 mt-2">
+              Deep repository intelligence, static analysis, and knowledge graph engine
+            </p>
+          </div>
 
-        <p className="text-slate-400 mt-2">
-          Repository intelligence dashboard
-        </p>
-
-        <div className="mt-8 bg-slate-900 border border-slate-800 rounded-xl p-6">
-          <p className="text-slate-400 text-sm">
-            Repository
-          </p>
-
-          <p className="text-lg mt-1">
-            {data.repository}
-          </p>
-
-          <p className="text-slate-400 text-sm mt-4">
-            Commit
-          </p>
-
-          <p className="text-sm mt-1 font-mono break-all">
-            {data.commit_sha}
-          </p>
+          <Link
+            href="/history"
+            className="text-sm bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white px-4 py-2 rounded-lg transition-colors"
+          >
+            Analysis History →
+          </Link>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mt-6">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-            <p className="text-slate-400">
-              Health Score
-            </p>
+        {/* Submission Card */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-8">
+          <h2 className="text-xl font-bold mb-4">Analyze a Repository</h2>
 
-            <p className="text-4xl font-bold mt-2">
-              {data.health_score.composite_health_score}
-            </p>
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                GitHub Repository URL <span className="text-rose-400">*</span>
+              </label>
+              <input
+                type="url"
+                value={repoUrl}
+                onChange={(e) => setRepoUrl(e.target.value)}
+                placeholder="https://github.com/owner/repository"
+                required
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-sm"
+              />
+              <p className="text-xs text-slate-500 mt-1">
+                Enter a remote Git repository URL (https://, http://, git@)
+              </p>
+            </div>
 
-            <p className="text-sm text-slate-400 mt-2">
-              {data.health_score.status}
-            </p>
-          </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Commit SHA or Ref <span className="text-slate-500">(Optional)</span>
+              </label>
+              <input
+                type="text"
+                value={commitSha}
+                onChange={(e) => setCommitSha(e.target.value)}
+                placeholder="e.g. 00e7d87c7353b1ffecc4cd55f19acfffedd5233e"
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-sm"
+              />
+            </div>
 
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-            <p className="text-slate-400">
-              Files
-            </p>
+            {error && (
+              <div className="bg-rose-950/70 border border-rose-800 text-rose-200 rounded-lg p-4 text-sm font-mono">
+                <div className="font-semibold mb-1">Backend Validation Error</div>
+                <div>{error}</div>
+              </div>
+            )}
 
-            <p className="text-4xl font-bold mt-2">
-              {data.files_analyzed}
-            </p>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-            <p className="text-slate-400">
-              Graph Nodes
-            </p>
-
-            <p className="text-4xl font-bold mt-2">
-              {data.knowledge_graph_summary.total_nodes}
-            </p>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-            <p className="text-slate-400">
-              Graph Edges
-            </p>
-
-            <p className="text-4xl font-bold mt-2">
-              {data.knowledge_graph_summary.total_edges}
-            </p>
-          </div>
+            <button
+              type="submit"
+              disabled={submitting || !repoUrl.trim()}
+              className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2 text-base"
+            >
+              {submitting ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Submitting Job...
+                </>
+              ) : (
+                "Analyze Repository"
+              )}
+            </button>
+          </form>
         </div>
 
-        <div className="mt-8">
-          <h2 className="text-2xl font-bold">
-            Health Breakdown
-          </h2>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mt-4">
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-              <p className="text-slate-400">
-                Complexity
-              </p>
-
-              <p className="text-3xl font-bold mt-2">
-                {data.health_score.sub_scores.complexity}
-              </p>
+        {/* Quick Example Presets */}
+        <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <button
+            type="button"
+            onClick={() => {
+              setRepoUrl("https://github.com/pytest-dev/iniconfig");
+              setCommitSha("");
+            }}
+            className="text-left bg-slate-900/60 border border-slate-800/80 hover:border-slate-700 p-4 rounded-xl transition-all"
+          >
+            <div className="text-xs text-blue-400 font-semibold uppercase tracking-wider mb-1">
+              Sample Python Repository
             </div>
+            <div className="text-sm font-mono text-slate-200">pytest-dev/iniconfig</div>
+            <div className="text-xs text-slate-400 mt-1">Python configuration parsing library</div>
+          </button>
 
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-              <p className="text-slate-400">
-                Maintainability
-              </p>
-
-              <p className="text-3xl font-bold mt-2">
-                {data.health_score.sub_scores.maintainability}
-              </p>
+          <Link
+            href="/history"
+            className="text-left bg-slate-900/60 border border-slate-800/80 hover:border-slate-700 p-4 rounded-xl transition-all"
+          >
+            <div className="text-xs text-emerald-400 font-semibold uppercase tracking-wider mb-1">
+              Database History
             </div>
-
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-              <p className="text-slate-400">
-                Security
-              </p>
-
-              <p className="text-3xl font-bold mt-2">
-                {data.health_score.sub_scores.security}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-8 bg-slate-900 border border-slate-800 rounded-xl p-6">
-          <h2 className="text-2xl font-bold">
-            Knowledge Graph Summary
-          </h2>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mt-5">
-            <div>
-              <p className="text-slate-400">
-                Total Nodes
-              </p>
-
-              <p className="text-2xl font-bold">
-                {data.knowledge_graph_summary.total_nodes}
-              </p>
-            </div>
-
-            <div>
-              <p className="text-slate-400">
-                Total Edges
-              </p>
-
-              <p className="text-2xl font-bold">
-                {data.knowledge_graph_summary.total_edges}
-              </p>
-            </div>
-
-            <div>
-              <p className="text-slate-400">
-                Call Edges
-              </p>
-
-              <p className="text-2xl font-bold">
-                {data.knowledge_graph_summary.call_edges_total}
-              </p>
-            </div>
-
-            <div>
-              <p className="text-slate-400">
-                Resolved
-              </p>
-
-              <p className="text-2xl font-bold">
-                {data.knowledge_graph_summary.call_edges_resolved_pct}%
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-8">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-2xl font-bold">
-                Repository Architecture
-              </h2>
-
-              <p className="text-slate-400 text-sm mt-1">
-                High-level file relationships
-              </p>
-            </div>
-
-            <div className="text-sm text-slate-400">
-              {fileNodes.length} files
-            </div>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-            <div className="h-[700px]">
-              <ReactFlow
-                nodes={flowNodes}
-                edges={architectureEdges}
-                fitView
-                fitViewOptions={{
-                  padding: 0.2,
-                }}
-                attributionPosition="bottom-left"
-              >
-                <Background />
-                <Controls />
-                <MiniMap />
-              </ReactFlow>
-            </div>
-          </div>
+            <div className="text-sm font-mono text-slate-200">View Recent Analyses</div>
+            <div className="text-xs text-slate-400 mt-1">Browse past analysis runs and cached graphs</div>
+          </Link>
         </div>
       </div>
     </main>
