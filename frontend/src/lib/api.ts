@@ -21,7 +21,6 @@ export interface JobStatusSummary {
   run_id?: string | null;
 }
 
-
 export interface AnalysisSummaryData {
   run_id: string;
   repository: string;
@@ -40,6 +39,28 @@ export interface AnalysisSummaryData {
   };
   files_analyzed: number;
   languages: string[];
+}
+
+/**
+ * Full health score shape as returned by the analysis pipeline.
+ * Frontend must NOT recalculate this — treat the pipeline as the single source of truth.
+ */
+export interface HealthScoreData {
+  composite_health_score?: number | null;
+  status?: string | null;
+  /** Per-component numeric scores, keyed by component name (complexity, maintainability, security, …) */
+  sub_scores?: Record<string, number | null>;
+  /** Per-component status strings (success, partial, failed, unsupported, …) */
+  component_statuses?: Record<string, string>;
+  /** Weights applied by the pipeline when computing the composite score */
+  weights_used?: Record<string, number>;
+  weights_renormalized?: boolean;
+  /** Components absent from the score due to analyzer failure / unsupported language */
+  missing_components?: string[];
+  formula?: string | null;
+  note?: string | null;
+  scope_policy?: string | null;
+  [key: string]: unknown;
 }
 
 export interface CanonicalAnalysisPayload {
@@ -61,6 +82,7 @@ export interface CanonicalAnalysisPayload {
     total_edges: number;
     call_edges_total: number;
     call_edges_resolved_pct: number;
+    [key: string]: unknown;
   };
   knowledge_graph: {
     nodes: Array<{
@@ -68,9 +90,15 @@ export interface CanonicalAnalysisPayload {
       type?: string;
       name?: string;
       file?: string;
-      start_line?: number;
-      end_line?: number;
+      start_line?: number | null;
+      end_line?: number | null;
       provenance?: string;
+      analyzer?: string | null;
+      severity?: string | null;
+      message?: string | null;
+      rule_id?: string | null;
+      test_id?: string | null;
+      confidence?: string | null;
       [key: string]: unknown;
     }>;
     edges: Array<{
@@ -82,17 +110,12 @@ export interface CanonicalAnalysisPayload {
       [key: string]: unknown;
     }>;
   };
-  health_score: {
-    composite_health_score: number;
-    status: string;
-    sub_scores: {
-      complexity?: number;
-      maintainability?: number;
-      security?: number;
-      [key: string]: unknown;
-    };
-    [key: string]: unknown;
-  };
+  /**
+   * Health score produced by the pipeline.
+   * May be null if scoring was skipped or the analysis failed before scoring.
+   * Frontend must NOT recalculate this.
+   */
+  health_score?: HealthScoreData | null;
   [key: string]: unknown;
 }
 
@@ -201,6 +224,23 @@ export async function getAnalysisFiles(
     cache: "no-store",
   });
   return handleResponse<FilesResponse>(res);
+}
+
+/**
+ * Fetch detail for a specific file within an analysis run.
+ * Each path segment is individually URI-encoded; slashes are preserved as separators
+ * so that FastAPI's `path:path` parameter receives the correct decoded value.
+ */
+export async function getFileDetail(runId: string, filePath: string): Promise<FileDetailResponse> {
+  const encodedPath = filePath
+    .split("/")
+    .map((seg) => encodeURIComponent(seg))
+    .join("/");
+  const res = await fetch(
+    `${API_BASE_URL}/api/v1/analyses/${runId}/files/${encodedPath}`,
+    { cache: "no-store" }
+  );
+  return handleResponse<FileDetailResponse>(res);
 }
 
 export async function getRepositoryRuns(repoUrl: string): Promise<{

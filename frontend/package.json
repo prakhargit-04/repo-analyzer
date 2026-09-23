@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "npx tsx --test src/__tests__/api.test.ts src/__tests__/dashboard.test.ts"
   },
   "dependencies": {
     "next": "16.3.5",

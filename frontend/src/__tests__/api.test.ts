@@ -4,7 +4,15 @@
 import test, { describe, afterEach } from "node:test";
 
 import assert from "node:assert";
-import { submitAnalysis, getJobStatus, getAnalysis, CanonicalAnalysisPayload } from "../lib/api";
+import {
+  submitAnalysis,
+  getJobStatus,
+  getAnalysis,
+  getAnalysisFindings,
+  getAnalysisFiles,
+  getFileDetail,
+  CanonicalAnalysisPayload,
+} from "../lib/api";
 
 describe("Frontend API Client & Contract", () => {
   const originalFetch = global.fetch;
@@ -98,5 +106,196 @@ describe("Frontend API Client & Contract", () => {
     const payload = await getAnalysis("run-uuid-456");
     assert.strictEqual(payload.repository, "https://github.com/pytest-dev/iniconfig");
     assert.strictEqual(payload.files_analyzed, 2);
+  });
+
+  // ── S17 additions ────────────────────────────────────────────────────────
+
+  test("getAnalysisFindings sends correct severity query param", async () => {
+    let capturedUrl = "";
+    global.fetch = (async (url: string | URL | Request) => {
+      capturedUrl = url.toString();
+      return new Response(
+        JSON.stringify({
+          run_id: "run-1",
+          findings: [],
+          pagination: { total: 0, limit: 25, offset: 0 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    await getAnalysisFindings("run-1", { severity: "HIGH", limit: 25, offset: 0 });
+    assert.ok(
+      capturedUrl.includes("severity=HIGH"),
+      `Expected severity=HIGH in URL, got: ${capturedUrl}`
+    );
+  });
+
+  test("getAnalysisFindings sends correct analyzer query param", async () => {
+    let capturedUrl = "";
+    global.fetch = (async (url: string | URL | Request) => {
+      capturedUrl = url.toString();
+      return new Response(
+        JSON.stringify({
+          run_id: "run-1",
+          findings: [],
+          pagination: { total: 0, limit: 25, offset: 0 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    await getAnalysisFindings("run-1", { analyzer: "bandit" });
+    assert.ok(
+      capturedUrl.includes("analyzer=bandit"),
+      `Expected analyzer=bandit in URL, got: ${capturedUrl}`
+    );
+  });
+
+  test("getAnalysisFindings handles empty findings array correctly", async () => {
+    global.fetch = (async () => {
+      return new Response(
+        JSON.stringify({
+          run_id: "run-empty",
+          findings: [],
+          pagination: { total: 0, limit: 25, offset: 0 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const result = await getAnalysisFindings("run-empty");
+    assert.strictEqual(result.findings.length, 0);
+    assert.strictEqual(result.pagination.total, 0);
+  });
+
+  test("getAnalysisFiles sends correct pagination query params", async () => {
+    let capturedUrl = "";
+    global.fetch = (async (url: string | URL | Request) => {
+      capturedUrl = url.toString();
+      return new Response(
+        JSON.stringify({
+          run_id: "run-1",
+          files: [],
+          pagination: { total: 0, limit: 25, offset: 25 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    await getAnalysisFiles("run-1", { limit: 25, offset: 25 });
+    assert.ok(
+      capturedUrl.includes("limit=25"),
+      `Expected limit=25 in URL, got: ${capturedUrl}`
+    );
+    assert.ok(
+      capturedUrl.includes("offset=25"),
+      `Expected offset=25 in URL, got: ${capturedUrl}`
+    );
+  });
+
+  test("getAnalysisFiles handles empty files array correctly", async () => {
+    global.fetch = (async () => {
+      return new Response(
+        JSON.stringify({
+          run_id: "run-empty",
+          files: [],
+          pagination: { total: 0, limit: 25, offset: 0 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const result = await getAnalysisFiles("run-empty");
+    assert.strictEqual(result.files.length, 0);
+    assert.strictEqual(result.pagination.total, 0);
+  });
+
+  test("getFileDetail encodes file path correctly in URL", async () => {
+    let capturedUrl = "";
+    global.fetch = (async (url: string | URL | Request) => {
+      capturedUrl = url.toString();
+      return new Response(
+        JSON.stringify({
+          run_id: "run-1",
+          file_path: "src/iniconfig/__init__.py",
+          language: "python",
+          parse_error: null,
+          entities: [],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    await getFileDetail("run-1", "src/iniconfig/__init__.py");
+
+    // Slashes should be preserved; __init__ should be encoded (%5F%5F...)
+    assert.ok(
+      capturedUrl.includes("src/iniconfig/"),
+      `Expected path segments in URL, got: ${capturedUrl}`
+    );
+    assert.ok(
+      capturedUrl.includes("__init__") || capturedUrl.includes("%5F%5Finit%5F%5F"),
+      `Expected __init__ (encoded or plain) in URL, got: ${capturedUrl}`
+    );
+  });
+
+  test("getFileDetail returns entity list including nullable fields", async () => {
+    const mockDetail = {
+      run_id: "run-1",
+      file_path: "src/foo.py",
+      language: "python",
+      parse_error: null,
+      entities: [
+        {
+          id: "fn::foo",
+          type: "function",
+          name: "foo",
+          file: "src/foo.py",
+          start_line: 10,
+          end_line: 20,
+        },
+        {
+          id: "finding::bandit::src/foo.py::15",
+          type: "finding",
+          analyzer: "bandit",
+          severity: "LOW",
+          message: "Use of assert",
+          line: 15,
+          // Deliberately omit col and end_line to test nullable handling
+        },
+      ],
+    };
+
+    global.fetch = (async () => {
+      return new Response(JSON.stringify(mockDetail), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    const detail = await getFileDetail("run-1", "src/foo.py");
+    assert.strictEqual(detail.entities.length, 2);
+    assert.strictEqual(detail.language, "python");
+    assert.strictEqual(detail.parse_error, null);
+  });
+
+  test("getFileDetail throws on 404 response", async () => {
+    global.fetch = (async () => {
+      return new Response(
+        JSON.stringify({ detail: "Analysis run 'bad-id' not found" }),
+        { status: 404, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    await assert.rejects(
+      async () => {
+        await getFileDetail("bad-id", "src/foo.py");
+      },
+      (err: Error) => {
+        assert.ok(err.message.includes("bad-id") || err.message.includes("404"));
+        return true;
+      }
+    );
   });
 });
