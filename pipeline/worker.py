@@ -53,19 +53,33 @@ def process_job_task(job_id: str, db_url: str, cache_dir: str) -> None:
             repo_url = job.repo_url
             commit_sha = job.commit_sha
 
-            # Run pipeline orchestrator
+            # Run pipeline orchestrator (persist_to_db=False guarantees single persistence)
             result = run_pipeline(
                 repo_url=repo_url,
                 local_path=None,
                 commit_sha=commit_sha,
                 cache_dir=cache_dir,
                 stage_callback=stage_cb,
+                persist_to_db=False,
             )
 
-            # Persist to database
-            run_id = persist_analysis(session, result)
-            job_status = "completed" if result.get("analysis_status") == "complete" else "partial"
-            complete_job(session, job_id, run_id=run_id, status=job_status, cache_hit=False)
+            res_sha = result.get("commit_sha") or commit_sha
+            cached_run = find_completed_run_by_sha(session, repo_url, res_sha) if res_sha else None
+
+            if cached_run:
+                run_id = cached_run["run_id"]
+                cache_hit = True
+            else:
+                run_id = persist_analysis(session, result)
+                cache_hit = False
+
+            analysis_status = result.get("analysis_status", "complete")
+            if analysis_status == "failed":
+                fail_job(session, job_id, error_message=result.get("error") or "Analysis run failed")
+            else:
+                job_status = "completed" if analysis_status == "complete" else "partial"
+                complete_job(session, job_id, run_id=run_id, status=job_status, cache_hit=cache_hit)
+
             session.commit()
 
         except Exception as exc:

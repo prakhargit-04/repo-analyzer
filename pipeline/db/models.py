@@ -173,6 +173,12 @@ class AnalysisRun(Base):
     health_score: Mapped[Optional["HealthScore"]] = relationship(
         "HealthScore", back_populates="run", uselist=False, cascade="all, delete-orphan"
     )
+    source_chunks: Mapped[List["SourceChunk"]] = relationship(
+        "SourceChunk", back_populates="run", cascade="all, delete-orphan"
+    )
+    source_embeddings: Mapped[List["SourceEmbedding"]] = relationship(
+        "SourceEmbedding", back_populates="run", cascade="all, delete-orphan"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -451,4 +457,89 @@ class AnalysisJobStage(Base):
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     job: Mapped["AnalysisJob"] = relationship("AnalysisJob", back_populates="stages")
+
+
+# ---------------------------------------------------------------------------
+# source_chunks (S19)
+# ---------------------------------------------------------------------------
+
+class SourceChunk(Base):
+    """
+    One row per ingested source evidence chunk per analysis run.
+    Stores deterministic line ranges, source text, language, commit SHA,
+    provenance, and optional entity metadata.
+    """
+    __tablename__ = "source_chunks"
+    __table_args__ = (
+        UniqueConstraint("run_id", "chunk_id", name="uq_source_chunk_run_chunk_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=_new_uuid)
+    run_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("analysis_runs.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    chunk_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    file_path: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    start_line: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    end_line: Mapped[int] = mapped_column(Integer, nullable=False)
+    chunk_text: Mapped[str] = mapped_column(Text, nullable=False)
+    language: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    entity_name: Mapped[Optional[str]] = mapped_column(Text, nullable=True, index=True)
+    entity_type: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)
+    provenance: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    chunk_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    commit_sha: Mapped[Optional[str]] = mapped_column(String(256), nullable=True, index=True)
+    chunker_version: Mapped[str] = mapped_column(String(32), nullable=False, default="1")
+    schema_version: Mapped[str] = mapped_column(String(32), nullable=False, default="1")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now_utc
+    )
+
+    run: Mapped["AnalysisRun"] = relationship("AnalysisRun", back_populates="source_chunks")
+    embeddings: Mapped[List["SourceEmbedding"]] = relationship(
+        "SourceEmbedding", back_populates="source_chunk", cascade="all, delete-orphan"
+    )
+
+
+# ---------------------------------------------------------------------------
+# source_embeddings (S20)
+# ---------------------------------------------------------------------------
+
+class SourceEmbedding(Base):
+    """
+    One row per vector embedding linked to a SourceChunk.
+    Stores model identity, model version, vector dimension, pipeline version,
+    and vector JSON representation for full database portability.
+    """
+    __tablename__ = "source_embeddings"
+    __table_args__ = (
+        UniqueConstraint("run_id", "source_chunk_id", "model_name", "model_version", name="uq_source_embedding_chunk_model"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=_new_uuid)
+    run_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("analysis_runs.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    source_chunk_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("source_chunks.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    chunk_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    repo_url: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    commit_sha: Mapped[Optional[str]] = mapped_column(String(256), nullable=True, index=True)
+    
+    model_name: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    model_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    dimension: Mapped[int] = mapped_column(Integer, nullable=False)
+    pipeline_version: Mapped[str] = mapped_column(String(32), nullable=False, default="1")
+    
+    vector_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now_utc
+    )
+
+    run: Mapped["AnalysisRun"] = relationship("AnalysisRun", back_populates="source_embeddings")
+    source_chunk: Mapped["SourceChunk"] = relationship("SourceChunk", back_populates="embeddings")
 

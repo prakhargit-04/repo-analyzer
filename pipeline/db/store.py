@@ -22,6 +22,7 @@ Design invariants:
 from __future__ import annotations
 
 import json
+import math
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -41,6 +42,8 @@ from .models import (
     HealthScore,
     AnalysisJob,
     AnalysisJobStage,
+    SourceChunk,
+    SourceEmbedding,
 )
 
 
@@ -309,8 +312,244 @@ def persist_analysis(session: Session, result_dict: dict) -> str:
         )
         session.add(hs)
 
+    # --- source_chunks (S19) ---
+    source_chunks_raw: List[dict] = result_dict.get("source_chunks", [])
+    sc_id_map: Dict[str, str] = {}
+    for chunk in source_chunks_raw:
+        sc = SourceChunk(
+            run_id=run.id,
+            chunk_id=chunk.get("chunk_id", ""),
+            file_path=chunk.get("file_path", ""),
+            start_line=chunk.get("start_line", 1),
+            end_line=chunk.get("end_line", 1),
+            chunk_text=chunk.get("chunk_text", ""),
+            language=chunk.get("language"),
+            entity_name=chunk.get("entity_name"),
+            entity_type=chunk.get("entity_type"),
+            provenance=chunk.get("provenance"),
+            chunk_hash=chunk.get("chunk_hash", ""),
+            commit_sha=chunk.get("commit_sha") or commit_sha_val,
+            chunker_version=chunk.get("chunker_version", "1"),
+            schema_version=chunk.get("schema_version", "1"),
+        )
+        session.add(sc)
+        session.flush()
+        if sc.chunk_id:
+            sc_id_map[sc.chunk_id] = sc.id
+
+    # --- source_embeddings (S20) ---
+    source_embeddings_raw: List[dict] = result_dict.get("source_embeddings", [])
+    for emb in source_embeddings_raw:
+        chunk_id = emb.get("chunk_id", "")
+        sc_id = sc_id_map.get(chunk_id) or emb.get("source_chunk_id")
+        if not sc_id:
+            continue
+        se = SourceEmbedding(
+            run_id=run.id,
+            source_chunk_id=sc_id,
+            chunk_id=chunk_id,
+            repo_url=repo_url,
+            commit_sha=emb.get("commit_sha") or commit_sha_val,
+            model_name=emb.get("model_name", "unknown"),
+            model_version=emb.get("model_version", "1.0"),
+            dimension=emb.get("dimension", 0),
+            pipeline_version=emb.get("pipeline_version", "1"),
+            vector_json=_j(emb.get("vector", [])),
+        )
+        session.add(se)
+
     session.flush()
     return run.id
+
+
+# ---------------------------------------------------------------------------
+# Source Chunks API Helpers (S19)
+# ---------------------------------------------------------------------------
+
+def get_source_chunks_for_run(
+    session: Session,
+    run_id: str,
+    file_path: Optional[str] = None,
+    start_line: Optional[int] = None,
+    end_line: Optional[int] = None,
+    entity_name: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict:
+    """Retrieve source chunks for an analysis run with optional filtering and pagination."""
+    stmt = select(SourceChunk).where(SourceChunk.run_id == run_id)
+    if file_path:
+        stmt = stmt.where(SourceChunk.file_path == file_path)
+    if start_line is not None:
+        stmt = stmt.where(SourceChunk.end_line >= start_line)
+    if end_line is not None:
+        stmt = stmt.where(SourceChunk.start_line <= end_line)
+    if entity_name:
+        stmt = stmt.where(SourceChunk.entity_name == entity_name)
+
+    stmt = stmt.order_by(SourceChunk.file_path, SourceChunk.start_line)
+
+    all_rows = session.execute(stmt).scalars().all()
+    total = len(all_rows)
+    paginated = all_rows[offset : offset + limit]
+
+    chunks_data = [
+        {
+            "chunk_id": sc.chunk_id,
+            "run_id": sc.run_id,
+            "file_path": sc.file_path,
+            "start_line": sc.start_line,
+            "end_line": sc.end_line,
+            "chunk_text": sc.chunk_text,
+            "language": sc.language,
+            "entity_name": sc.entity_name,
+            "entity_type": sc.entity_type,
+            "provenance": sc.provenance,
+            "chunk_hash": sc.chunk_hash,
+            "commit_sha": sc.commit_sha,
+            "chunker_version": sc.chunker_version,
+            "schema_version": sc.schema_version,
+        }
+        for sc in paginated
+    ]
+
+    return {
+        "run_id": run_id,
+        "total_chunks": total,
+        "chunks": chunks_data,
+        "pagination": {"total": total, "limit": limit, "offset": offset},
+    }
+
+
+def resolve_source_chunk(
+    session: Session,
+    run_id: str,
+    file_path: str,
+    line: int,
+) -> Optional[dict]:
+    """Resolve a specific file line to its matching source chunk for evidence preview."""
+    stmt = (
+        select(SourceChunk)
+        .where(
+            SourceChunk.run_id == run_id,
+            SourceChunk.file_path == file_path,
+            SourceChunk.start_line <= line,
+            SourceChunk.end_line >= line,
+        )
+        .order_by(SourceChunk.start_line.desc())
+    )
+    sc = session.execute(stmt).scalars().first()
+    if not sc:
+        return None
+
+    return {
+        "chunk_id": sc.chunk_id,
+        "run_id": sc.run_id,
+        "file_path": sc.file_path,
+        "start_line": sc.start_line,
+        "end_line": sc.end_line,
+        "chunk_text": sc.chunk_text,
+        "language": sc.language,
+        "entity_name": sc.entity_name,
+        "entity_type": sc.entity_type,
+        "provenance": sc.provenance,
+        "chunk_hash": sc.chunk_hash,
+        "commit_sha": sc.commit_sha,
+        "chunker_version": sc.chunker_version,
+        "schema_version": sc.schema_version,
+    }
+
+
+def retrieve_similar_chunks(
+    session: Session,
+    run_id: str,
+    query_text: str,
+    top_k: int = 5,
+    provider: Optional[Any] = None,
+) -> dict:
+    """
+    Perform repository/commit-scoped vector similarity search over SourceEmbeddings.
+
+    Returns structured retrieval result with similarity scores and full SourceChunk metadata.
+    """
+    from embeddings import get_embedding_provider, BaseEmbeddingProvider
+    active_provider: BaseEmbeddingProvider = provider or get_embedding_provider()
+
+    run = session.execute(
+        select(AnalysisRun).where(AnalysisRun.id == run_id)
+    ).scalar_one_or_none()
+
+    if not run:
+        return {
+            "query": query_text,
+            "run_id": run_id,
+            "repo_url": "unknown",
+            "commit_sha": None,
+            "total_retrieved": 0,
+            "model_name": active_provider.name,
+            "results": [],
+        }
+
+    snap = run.snapshot
+    repo_url = snap.repository.repo_url if snap and snap.repository else "unknown"
+    commit_sha = snap.commit_sha if snap else None
+
+    query_vector = active_provider.embed_query(query_text)
+
+    stmt = (
+        select(SourceEmbedding, SourceChunk)
+        .join(SourceChunk, SourceEmbedding.source_chunk_id == SourceChunk.id)
+        .where(SourceEmbedding.run_id == run_id)
+        .where(SourceEmbedding.model_name == active_provider.name)
+    )
+
+    rows = session.execute(stmt).all()
+
+    def _cosine_sim(v1: list[float], v2: list[float]) -> float:
+        if not v1 or not v2 or len(v1) != len(v2):
+            return 0.0
+        dot = sum(a * b for a, b in zip(v1, v2))
+        norm_a = math.sqrt(sum(a * a for a in v1))
+        norm_b = math.sqrt(sum(b * b for b in v2))
+        if norm_a == 0 or norm_b == 0:
+            return 0.0
+        return dot / (norm_a * norm_b)
+
+    scored_results = []
+    for se, sc in rows:
+        vec = _uj(se.vector_json) or []
+        score = _cosine_sim(query_vector, vec)
+        scored_results.append((score, sc, se))
+
+    scored_results.sort(key=lambda x: x[0], reverse=True)
+    top_results = scored_results[:top_k]
+
+    results_data = [
+        {
+            "chunk_id": sc.chunk_id,
+            "score": round(float(score), 4),
+            "file_path": sc.file_path,
+            "start_line": sc.start_line,
+            "end_line": sc.end_line,
+            "language": sc.language,
+            "entity_name": sc.entity_name,
+            "entity_type": sc.entity_type,
+            "chunk_text": sc.chunk_text,
+            "provenance": sc.provenance,
+            "commit_sha": sc.commit_sha or commit_sha,
+        }
+        for score, sc, se in top_results
+    ]
+
+    return {
+        "query": query_text,
+        "run_id": run_id,
+        "repo_url": repo_url,
+        "commit_sha": commit_sha,
+        "total_retrieved": len(results_data),
+        "model_name": active_provider.name,
+        "results": results_data,
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -270,6 +270,7 @@ export function FindingsPanel({ runId, onGoToFile }: FindingsPanelProps) {
           {selectedFinding && (
             <FindingDetailPanel
               finding={selectedFinding}
+              runId={runId}
               onClose={() => navigate({ finding: null })}
               onGoToFile={onGoToFile}
             />

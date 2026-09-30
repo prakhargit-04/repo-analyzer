@@ -23,6 +23,9 @@ from parser_interface import parse_repository
 from static_analysis import analyze_repository
 from graph_builder import build_graph, graph_summary
 from health_score import compute_health_score
+from chunker import generate_repository_chunks, SOURCE_CHUNKER_VERSION, SOURCE_CHUNK_SCHEMA_VERSION
+from embeddings import EMBEDDING_PIPELINE_VERSION
+from embeddings_stage import generate_source_embeddings
 from util import resolve_snapshot_id, try_git_head_sha, build_cache_key, CACHE_SCHEMA_VERSION, ANALYZER_VERSION, SCHEMA_VERSION
 
 # S14: optional DB persistence -- only imported when DATABASE_URL is set
@@ -88,6 +91,7 @@ def run_pipeline(
     commit_sha: str | None,
     cache_dir: str,
     stage_callback: Callable[[str, str, Optional[str]], None] | None = None,
+    persist_to_db: bool = False,
 ) -> dict:
     cleanup_dir = None
     is_fresh_clone = False
@@ -137,11 +141,11 @@ def run_pipeline(
         notify("parsing", "running")
         parse_results = parse_repository(repo_root)
         parse_results.sort(key=lambda r: r.file)
-        py_files_rel = [r.file for r in parse_results if not r.parse_error]
+        parsed_files_rel = [r.file for r in parse_results if not r.parse_error]
         notify("parsing", "completed", f"{len(parse_results)} files parsed")
 
         notify("analyzing", "running")
-        analysis = analyze_repository(repo_root, py_files_rel)
+        analysis = analyze_repository(repo_root, parsed_files_rel)
         notify("analyzing", "completed")
 
         notify("graph-building", "running")
@@ -176,12 +180,24 @@ def run_pipeline(
         )
         notify("scoring", "completed", f"Status: {health['status']}")
 
-        notify("embedding", "skipped", "Skipped until S20")
+        notify("chunking", "running")
+        source_chunks = generate_repository_chunks(repo_root, parse_results, commit_sha=resolved_sha)
+        notify("chunking", "completed", f"{len(source_chunks)} chunks generated")
+
+        notify("embedding", "running")
+        embeddings, emb_status = generate_source_embeddings(
+            source_chunks,
+            repo_url=repo_url or local_path or "unknown",
+            commit_sha=resolved_sha,
+        )
+        notify("embedding", "completed", f"{len(embeddings)} embeddings generated ({emb_status['status']})")
 
         result = {
             "schema_version": SCHEMA_VERSION,
             "cache_schema_version": CACHE_SCHEMA_VERSION,
             "analyzer_version": ANALYZER_VERSION,
+            "chunker_version": SOURCE_CHUNKER_VERSION,
+            "embedding_pipeline_version": EMBEDDING_PIPELINE_VERSION,
             "repository": repo_url or local_path,
             "commit_sha": resolved_sha,
             "cache_snapshot_id": snapshot_id,
@@ -199,16 +215,20 @@ def run_pipeline(
             } or {"python"})),
             "analysis_status": health["status"],
 
-            "files_analyzed": len(py_files_rel),
+            "files_analyzed": len(parsed_files_rel),
             "parse_errors": parse_errors,
             "static_analysis": analysis,
             "knowledge_graph_summary": summary,
             "knowledge_graph": graph_data,
             "health_score": health,
+            "source_chunks": source_chunks,
+            "source_embeddings": embeddings,
+            "embedding_status": emb_status,
         }
 
         save_cache_atomic(cache_path, result)
-        _try_persist_to_db(result)
+        if persist_to_db:
+            _try_persist_to_db(result)
         return result
     finally:
         if cleanup_dir and os.path.exists(cleanup_dir):
@@ -217,7 +237,7 @@ def run_pipeline(
 
 
 def main():
-    ap = argparse.ArgumentParser(description="GitHub Project Analyzer -- Tier 1 pipeline (Python-only)")
+    ap = argparse.ArgumentParser(description="GitHub Project Analyzer -- Multi-language Tier 1 pipeline")
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--repo-url", help="e.g. https://github.com/owner/repo")
     src.add_argument("--local-path", help="path to an already-cloned local repo")
@@ -226,7 +246,13 @@ def main():
     ap.add_argument("--out", default=None, help="write JSON result to this file (else stdout)")
     args = ap.parse_args()
 
-    result = run_pipeline(args.repo_url, args.local_path, args.commit_sha, args.cache_dir)
+    result = run_pipeline(
+        args.repo_url,
+        args.local_path,
+        args.commit_sha,
+        args.cache_dir,
+        persist_to_db=bool(os.environ.get("DATABASE_URL")),
+    )
 
     output = json.dumps(result, indent=2, sort_keys=True)
     if args.out:

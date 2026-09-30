@@ -78,3 +78,88 @@ class FileDetailResponse(BaseModel):
     language: Optional[str] = None
     parse_error: Optional[str] = None
     entities: List[Dict[str, Any]] = []
+
+
+class SourceChunkItem(BaseModel):
+    chunk_id: str
+    run_id: str
+    file_path: str
+    start_line: int
+    end_line: int
+    chunk_text: str
+    language: Optional[str] = None
+    entity_name: Optional[str] = None
+    entity_type: Optional[str] = None
+    provenance: Optional[str] = None
+    chunk_hash: str
+    commit_sha: Optional[str] = None
+    chunker_version: str = "1"
+    schema_version: str = "1"
+
+
+class ChunksResponse(BaseModel):
+    run_id: str
+    total_chunks: int
+    chunks: List[SourceChunkItem]
+    pagination: PaginationMeta
+
+
+class RetrievalRequest(BaseModel):
+    query: str = Field(..., description="Natural language search query for source code evidence retrieval")
+    top_k: int = Field(5, ge=1, le=50, description="Maximum number of top matching source chunks to return")
+
+
+class RetrievalResultItem(BaseModel):
+    chunk_id: str
+    score: float
+    file_path: str
+    start_line: int
+    end_line: int
+    language: Optional[str] = None
+    entity_name: Optional[str] = None
+    entity_type: Optional[str] = None
+    chunk_text: str
+    provenance: Optional[str] = None
+    commit_sha: Optional[str] = None
+
+
+class RetrievalResponse(BaseModel):
+    query: str
+    run_id: str
+    repo_url: str
+    commit_sha: Optional[str] = None
+    total_retrieved: int
+    model_name: str
+    results: List[RetrievalResultItem]
+
+
+class AskRequest(BaseModel):
+    question: str = Field(..., description="Natural language question about the repository codebase")
+    top_k: int = Field(5, ge=1, le=20, description="Maximum number of evidence chunks to retrieve and consider")
+
+
+class CitationItem(BaseModel):
+    citation_id: str
+    chunk_id: str
+    file_path: str
+    start_line: int
+    end_line: int
+    language: Optional[str] = None
+    entity_name: Optional[str] = None
+    entity_type: Optional[str] = None
+    commit_sha: Optional[str] = None
+    provenance: Optional[str] = "TOOL_DERIVED"
+
+
+class AskResponse(BaseModel):
+    question: str
+    answer: str
+    repository: str
+    commit_sha: Optional[str] = None
+    run_id: str
+    citations: List[CitationItem]
+    retrieved_chunks_count: int
+    llm_model: str
+    provenance: str = "AI_GENERATED"
+
+

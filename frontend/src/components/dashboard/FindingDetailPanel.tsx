@@ -1,8 +1,9 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { SeverityBadge } from "@/components/ui/SeverityBadge";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { resolveSourceChunk, SourceChunkItem } from "@/lib/api";
 
 /** Shape of a finding node as it comes back from the knowledge graph. */
 export interface FindingNode {
@@ -28,6 +29,7 @@ export interface FindingNode {
 
 interface FindingDetailPanelProps {
   finding: FindingNode;
+  runId?: string;
   onClose: () => void;
   /** Navigate the parent page to the Files tab with this file pre-selected. */
   onGoToFile: (filePath: string) => void;
@@ -75,12 +77,38 @@ function Field({
 
 export function FindingDetailPanel({
   finding,
+  runId,
   onClose,
   onGoToFile,
 }: FindingDetailPanelProps) {
   const title =
     finding.message || finding.title || finding.name || finding.id;
   const ruleId = finding.rule_id || finding.test_id || null;
+
+  const [sourceChunk, setSourceChunk] = useState<SourceChunkItem | null>(null);
+  const [chunkLoading, setChunkLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    let active = true;
+    if (runId && finding.file && finding.line != null) {
+      setChunkLoading(true);
+      resolveSourceChunk(runId, finding.file, finding.line)
+        .then((sc) => {
+          if (active) setSourceChunk(sc);
+        })
+        .catch(() => {
+          if (active) setSourceChunk(null);
+        })
+        .finally(() => {
+          if (active) setChunkLoading(false);
+        });
+    } else {
+      setSourceChunk(null);
+    }
+    return () => {
+      active = false;
+    };
+  }, [runId, finding.file, finding.line]);
 
   // Extra fields that aren't already displayed individually
   const extraEntries = Object.entries(finding).filter(
@@ -162,12 +190,36 @@ export function FindingDetailPanel({
         ))}
       </div>
 
-      {/* Source-code availability notice */}
+      {/* Source Evidence Preview Section (S19) */}
       <div className="mt-5 pt-4 border-t border-slate-800">
-        <p className="text-slate-500 text-xs">
-          Source code evidence is not available in S17. File content storage
-          and evidence chunking are planned for a future session (S19).
-        </p>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider">
+            Source Evidence Preview (S19)
+          </p>
+          {sourceChunk && (
+            <span className="text-xs text-slate-400 font-mono">
+              {sourceChunk.file_path}:L{sourceChunk.start_line}–L{sourceChunk.end_line}
+            </span>
+          )}
+        </div>
+
+        {chunkLoading ? (
+          <p className="text-xs text-slate-500 font-mono animate-pulse">Loading source evidence chunk...</p>
+        ) : sourceChunk ? (
+          <div>
+            <div className="bg-slate-950 border border-slate-800 rounded-lg p-3 font-mono text-xs text-slate-200 overflow-x-auto max-h-64 leading-relaxed">
+              <pre>{sourceChunk.chunk_text}</pre>
+            </div>
+            <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-500 mt-2 font-mono gap-2">
+              <span>Provenance: {sourceChunk.provenance}</span>
+              {sourceChunk.commit_sha && <span>Commit: {sourceChunk.commit_sha.substring(0, 8)}</span>}
+            </div>
+          </div>
+        ) : (
+          <p className="text-slate-500 text-xs">
+            Source code chunk metadata is traceable to repo snapshot commit. Select a file or line location to view matching chunk preview.
+          </p>
+        )}
       </div>
     </div>
   );

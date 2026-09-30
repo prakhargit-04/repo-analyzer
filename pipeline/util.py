@@ -117,20 +117,16 @@ def resolve_snapshot_id(repo_root: str, is_fresh_clone: bool, git_sha: str | Non
 def build_cache_key(snapshot_id: str) -> str:
     """
     The repository snapshot alone is an insufficient cache key: it says
-    nothing about whether the *analyzer's own behavior* changed since the
-    cached result was written (parser rules, scoring formula, test-exclusion
-    policy, graph-resolution logic, result schema). Folding in a schema
-    version and an analyzer version means a bugfix to this codebase
-    invalidates old cache entries even when the repository content being
-    analyzed hasn't changed at all -- otherwise a stale cache hit could
-    silently keep serving pre-fix (wrong) results forever.
-
-    Deliberately excludes anything that changes on every run (timestamps,
-    process ids, etc) -- a cache key must be reproducible for identical
-    (analyzer_version, repo_content) pairs.
+    nothing about whether the *analyzer's own behavior*, *source chunker*, or
+    *embedding provider* changed since the cached result was written. Folding in
+    schema, analyzer, chunker, and embedding version strings invalidates old cache entries.
     """
-    raw = f"{CACHE_SCHEMA_VERSION}\n{ANALYZER_VERSION}\n{snapshot_id}"
+    from chunker import SOURCE_CHUNKER_VERSION
+    from embeddings import EMBEDDING_PIPELINE_VERSION, get_embedding_provider
+    provider = get_embedding_provider()
+    raw = f"{CACHE_SCHEMA_VERSION}\n{ANALYZER_VERSION}\n{SOURCE_CHUNKER_VERSION}\n{EMBEDDING_PIPELINE_VERSION}\n{provider.name}\n{provider.model_version}\n{snapshot_id}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
 
 
 def try_git_head_sha(path: str) -> str | None:

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
-import { getFileDetail } from "@/lib/api";
+import { getFileDetail, getAnalysisChunks, SourceChunkItem } from "@/lib/api";
 import { SeverityBadge } from "@/components/ui/SeverityBadge";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
@@ -43,6 +43,7 @@ export function FileDetailPanel({
   onGoToFindings,
 }: FileDetailPanelProps) {
   const [entities, setEntities] = useState<EntityNode[]>([]);
+  const [chunks, setChunks] = useState<SourceChunkItem[]>([]);
   const [language, setLanguage] = useState<string | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -56,6 +57,13 @@ export function FileDetailPanel({
       setEntities(detail.entities as EntityNode[]);
       setLanguage(detail.language ?? null);
       setParseError(detail.parse_error ?? null);
+
+      try {
+        const chunkRes = await getAnalysisChunks(runId, { file_path: filePath, limit: 10 });
+        setChunks(chunkRes.chunks);
+      } catch {
+        setChunks([]);
+      }
     } catch (e) {
       setError(
         e instanceof Error
@@ -203,14 +211,47 @@ export function FileDetailPanel({
             </section>
           )}
 
-          {/* ── Source code notice ── */}
-          <div className="pt-4 border-t border-slate-800">
-            <p className="text-slate-500 text-xs">
-              Source code display is not available in S17. File content
-              storage and evidence chunking are planned for a future session
-              (S19).
-            </p>
-          </div>
+          {/* ── Source Code Chunks Section (S19) ── */}
+          <section className="pt-4 border-t border-slate-800">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-slate-400 text-xs uppercase tracking-wider font-medium">
+                Source Code Evidence Chunks ({chunks.length})
+              </h4>
+              {chunks.length > 0 && chunks[0].commit_sha && (
+                <span className="text-xs text-slate-500 font-mono">
+                  Commit: {chunks[0].commit_sha.substring(0, 8)}
+                </span>
+              )}
+            </div>
+            {chunks.length === 0 ? (
+              <p className="text-slate-500 text-xs font-mono">
+                No source evidence chunks ingested for this file (binary or unindexed).
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {chunks.map((sc) => (
+                  <div key={sc.chunk_id} className="bg-slate-950/60 border border-slate-800 rounded-lg p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2 text-xs font-mono">
+                      <div className="flex items-center gap-2">
+                        <span className="bg-slate-800 text-slate-300 px-2 py-0.5 rounded text-[11px]">
+                          L{sc.start_line}–L{sc.end_line}
+                        </span>
+                        {sc.entity_name && (
+                          <span className="text-blue-400 font-semibold truncate max-w-xs">
+                            {sc.entity_type}: {sc.entity_name}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-slate-500">{sc.provenance}</span>
+                    </div>
+                    <div className="bg-slate-950 border border-slate-900 rounded p-2.5 font-mono text-xs text-slate-200 overflow-x-auto max-h-48 leading-relaxed">
+                      <pre>{sc.chunk_text}</pre>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
       )}
     </div>

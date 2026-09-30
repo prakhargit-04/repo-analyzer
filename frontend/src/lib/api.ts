@@ -263,3 +263,138 @@ export async function getRepositoryRuns(repoUrl: string): Promise<{
   });
   return handleResponse(res);
 }
+
+export interface SourceChunkItem {
+  chunk_id: string;
+  run_id: string;
+  file_path: string;
+  start_line: number;
+  end_line: number;
+  chunk_text: string;
+  language?: string | null;
+  entity_name?: string | null;
+  entity_type?: string | null;
+  provenance?: string | null;
+  chunk_hash: string;
+  commit_sha?: string | null;
+  chunker_version: string;
+  schema_version: string;
+}
+
+export interface ChunksResponse {
+  run_id: string;
+  total_chunks: number;
+  chunks: SourceChunkItem[];
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+  };
+}
+
+export async function getAnalysisChunks(
+  runId: string,
+  params?: { file_path?: string; start_line?: number; end_line?: number; entity_name?: string; limit?: number; offset?: number }
+): Promise<ChunksResponse> {
+  const query = new URLSearchParams();
+  if (params?.file_path) query.set("file_path", params.file_path);
+  if (params?.start_line) query.set("start_line", params.start_line.toString());
+  if (params?.end_line) query.set("end_line", params.end_line.toString());
+  if (params?.entity_name) query.set("entity_name", params.entity_name);
+  if (params?.limit) query.set("limit", params.limit.toString());
+  if (params?.offset) query.set("offset", params.offset.toString());
+
+  const res = await fetch(`${API_BASE_URL}/api/v1/analyses/${runId}/chunks?${query.toString()}`, {
+    cache: "no-store",
+  });
+  return handleResponse<ChunksResponse>(res);
+}
+
+export async function resolveSourceChunk(
+  runId: string,
+  filePath: string,
+  line: number
+): Promise<SourceChunkItem> {
+  const query = new URLSearchParams({ file_path: filePath, line: line.toString() });
+  const res = await fetch(`${API_BASE_URL}/api/v1/analyses/${runId}/chunks/resolve?${query.toString()}`, {
+    cache: "no-store",
+  });
+  return handleResponse<SourceChunkItem>(res);
+}
+
+export interface RetrievalResultItem {
+  chunk_id: string;
+  score: number;
+  file_path: string;
+  start_line: number;
+  end_line: number;
+  language?: string | null;
+  entity_name?: string | null;
+  entity_type?: string | null;
+  chunk_text: string;
+  provenance?: string | null;
+  commit_sha?: string | null;
+}
+
+export interface RetrievalResponse {
+  query: string;
+  run_id: string;
+  repo_url: string;
+  commit_sha?: string | null;
+  total_retrieved: number;
+  model_name: string;
+  results: RetrievalResultItem[];
+}
+
+export async function retrieveSourceChunks(
+  runId: string,
+  query: string,
+  topK: number = 5
+): Promise<RetrievalResponse> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/analyses/${runId}/retrieve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query, top_k: topK }),
+  });
+  return handleResponse<RetrievalResponse>(res);
+}
+
+export interface CitationItem {
+  citation_id: string;
+  chunk_id: string;
+  file_path: string;
+  start_line: number;
+  end_line: number;
+  language?: string | null;
+  entity_name?: string | null;
+  entity_type?: string | null;
+  commit_sha?: string | null;
+  provenance?: string | null;
+}
+
+export interface AskResponse {
+  question: string;
+  answer: string;
+  repository: string;
+  commit_sha?: string | null;
+  run_id: string;
+  citations: CitationItem[];
+  retrieved_chunks_count: number;
+  llm_model: string;
+  provenance: string;
+}
+
+export async function askRepositoryQuestion(
+  runId: string,
+  question: string,
+  topK: number = 5
+): Promise<AskResponse> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/analyses/${runId}/ask`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question, top_k: topK }),
+  });
+  return handleResponse<AskResponse>(res);
+}
+
+

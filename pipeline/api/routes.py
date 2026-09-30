@@ -31,7 +31,12 @@ from db.store import (
     get_latest_analysis,
     get_all_runs_for_repo,
     complete_job,
+    get_source_chunks_for_run,
+    resolve_source_chunk,
+    retrieve_similar_chunks,
 )
+from rag.service import answer_repository_question
+
 from worker import get_worker_queue
 from api.schemas import (
     SubmitAnalysisRequest,
@@ -41,7 +46,14 @@ from api.schemas import (
     FindingsResponse,
     FilesResponse,
     FileDetailResponse,
+    ChunksResponse,
+    SourceChunkItem,
+    RetrievalRequest,
+    RetrievalResponse,
+    AskRequest,
+    AskResponse,
 )
+
 
 router = APIRouter(prefix="/api/v1", tags=["repository-analysis"])
 
@@ -361,3 +373,103 @@ def get_file_detail(
         "parse_error": parse_err,
         "entities": entities,
     }
+
+
+# ---------------------------------------------------------------------------
+# Source Chunks Endpoints (S19)
+# ---------------------------------------------------------------------------
+
+@router.get("/analyses/{run_id}/chunks", response_model=ChunksResponse)
+def get_analysis_chunks(
+    run_id: str,
+    file_path: Optional[str] = Query(None, description="Filter chunks by file path"),
+    start_line: Optional[int] = Query(None, description="Filter chunks overlapping start line"),
+    end_line: Optional[int] = Query(None, description="Filter chunks overlapping end line"),
+    entity_name: Optional[str] = Query(None, description="Filter chunks by entity name"),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db_session),
+):
+    analysis = get_analysis_by_run_id(db, run_id)
+    if not analysis:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Analysis run '{run_id}' not found")
+
+    return get_source_chunks_for_run(
+        db,
+        run_id=run_id,
+        file_path=file_path,
+        start_line=start_line,
+        end_line=end_line,
+        entity_name=entity_name,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/analyses/{run_id}/chunks/resolve", response_model=SourceChunkItem)
+def resolve_chunk_for_location(
+    run_id: str,
+    file_path: str = Query(..., description="File path relative to repository root"),
+    line: int = Query(..., ge=1, description="Line number to resolve"),
+    db: Session = Depends(get_db_session),
+):
+    analysis = get_analysis_by_run_id(db, run_id)
+    if not analysis:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Analysis run '{run_id}' not found")
+
+    chunk = resolve_source_chunk(db, run_id=run_id, file_path=file_path, line=line)
+    if not chunk:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No matching source chunk found for file '{file_path}' at line {line}",
+        )
+    return chunk
+
+
+# ---------------------------------------------------------------------------
+# Vector Retrieval Endpoints (S20)
+# ---------------------------------------------------------------------------
+
+@router.post("/analyses/{run_id}/retrieve", response_model=RetrievalResponse)
+def retrieve_source_evidence_post(
+    run_id: str,
+    req: RetrievalRequest,
+    db: Session = Depends(get_db_session),
+):
+    analysis = get_analysis_by_run_id(db, run_id)
+    if not analysis:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Analysis run '{run_id}' not found")
+
+    return retrieve_similar_chunks(db, run_id=run_id, query_text=req.query, top_k=req.top_k)
+
+
+@router.get("/analyses/{run_id}/retrieve", response_model=RetrievalResponse)
+def retrieve_source_evidence_get(
+    run_id: str,
+    query: str = Query(..., description="Natural language search query for source code evidence retrieval"),
+    top_k: int = Query(5, ge=1, le=50, description="Maximum number of top matching source chunks to return"),
+    db: Session = Depends(get_db_session),
+):
+    analysis = get_analysis_by_run_id(db, run_id)
+    if not analysis:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Analysis run '{run_id}' not found")
+
+    return retrieve_similar_chunks(db, run_id=run_id, query_text=query, top_k=top_k)
+
+
+# ---------------------------------------------------------------------------
+# RAG Evidence-Grounded Question Answering Endpoint (S21)
+# ---------------------------------------------------------------------------
+
+@router.post("/analyses/{run_id}/ask", response_model=AskResponse)
+def ask_repository_question(
+    run_id: str,
+    req: AskRequest,
+    db: Session = Depends(get_db_session),
+):
+    analysis = get_analysis_by_run_id(db, run_id)
+    if not analysis:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Analysis run '{run_id}' not found")
+
+    return answer_repository_question(db, run_id=run_id, question=req.question, top_k=req.top_k)
+

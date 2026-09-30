@@ -1292,16 +1292,27 @@ class AnalyzerOrchestrator:
     """
     Centralized orchestration layer for analyzer execution across the pipeline.
     Coordinates Python-specific legacy analyzers (Radon CC, Radon MI, Bandit) and
-    BaseAnalyzer instances (Lizard, Semgrep, Gitleaks, OSV.dev).
+    multi-language BaseAnalyzer instances (Lizard, Semgrep, Gitleaks, OSV.dev).
     """
 
-    def __init__(self, repo_root: str, py_files_rel: List[str]) -> None:
+    def __init__(
+        self,
+        repo_root: str,
+        parsed_files_rel: List[str] | None = None,
+        py_files_rel: List[str] | None = None,
+    ) -> None:
+        files = (
+            parsed_files_rel
+            if parsed_files_rel is not None
+            else (py_files_rel if py_files_rel is not None else [])
+        )
         self.repo_root = repo_root
-        self.py_files_rel = py_files_rel
+        self.parsed_files_rel = files
+        self.py_files_rel = files
         # Normalize files to relative paths first, safely handling both relative and absolute inputs
         self.rel_files = [
             os.path.relpath(f, repo_root).replace("\\", "/") if os.path.isabs(f) else f.replace("\\", "/")
-            for f in py_files_rel
+            for f in files
         ]
         self.prod_files = [f for f in self.rel_files if not is_test_file(f)]
         self.test_files = [f for f in self.rel_files if is_test_file(f)]
@@ -1309,12 +1320,21 @@ class AnalyzerOrchestrator:
             os.path.normpath(os.path.join(repo_root, f))
             for f in self.prod_files
         ]
+        self.python_prod_files = [
+            f for f in self.prod_files if f.endswith((".py", ".pyw"))
+        ]
 
     def run_radon(self) -> tuple[dict, dict]:
+        if not self.python_prod_files:
+            return (
+                {"status": "unsupported", "results": []},
+                {"status": "unsupported", "results": []},
+            )
+
         complexity_results, maintainability_results = [], []
         any_complexity_failure = any_maintainability_failure = False
 
-        for rel in self.prod_files:
+        for rel in self.python_prod_files:
             abs_path = os.path.join(self.repo_root, rel)
             status, results = run_radon_complexity(abs_path, rel)
             if status == "failed":
@@ -1339,11 +1359,14 @@ class AnalyzerOrchestrator:
         return comp_dict, maint_dict
 
     def run_bandit(self) -> dict:
-        security_status, security_results = run_bandit(self.repo_root, self.prod_files)
+        if not self.python_prod_files:
+            return {"status": "unsupported", "results": []}
+
+        security_status, security_results = run_bandit(self.repo_root, self.python_prod_files)
         return {"status": security_status, "results": [asdict(s) for s in security_results]}
 
     def execute_all(self) -> dict:
-        if not self.py_files_rel:
+        if not self.parsed_files_rel:
             return {
                 "scope_policy": "production_code_only",
                 "production_files_analyzed": 0,
@@ -1383,11 +1406,18 @@ class AnalyzerOrchestrator:
         return analysis_output
 
 
-def analyze_repository(repo_root: str, py_files_rel: list) -> dict:
+def analyze_repository(
+    repo_root: str,
+    parsed_files_rel: list | None = None,
+    py_files_rel: list | None = None,
+) -> dict:
     """
-    py_files_rel: ALL python files found (test + production).
-    Orchestrates Radon, Bandit, Lizard, Semgrep, Gitleaks, and OSV analyzers cleanly.
+    parsed_files_rel: ALL source files found (test + production).
+    Orchestrates Radon, Bandit, Lizard, Semgrep, Gitleaks, and OSV analyzers cleanly,
+    running Python-specific tools (Radon, Bandit) strictly against Python source code.
     """
-    orchestrator = AnalyzerOrchestrator(repo_root, py_files_rel)
+    orchestrator = AnalyzerOrchestrator(
+        repo_root, parsed_files_rel=parsed_files_rel, py_files_rel=py_files_rel
+    )
     return orchestrator.execute_all()
 
