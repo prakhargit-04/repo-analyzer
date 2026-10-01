@@ -83,9 +83,11 @@ def get_cache_dir() -> str:
 # Health & Readiness
 # ---------------------------------------------------------------------------
 
+from version import APP_VERSION
+
 @router.get("/health", response_model=HealthResponse)
 def health_check():
-    return {"status": "ok", "version": "0.15.0", "database": "configured"}
+    return {"status": "ok", "version": APP_VERSION, "database": "configured"}
 
 
 @router.get("/readiness", response_model=HealthResponse)
@@ -95,7 +97,8 @@ def readiness_check(db: Session = Depends(get_db_session)):
         db_status = "connected"
     except Exception:
         db_status = "error"
-    return {"status": "ready" if db_status == "connected" else "not_ready", "version": "0.15.0", "database": db_status}
+    return {"status": "ready" if db_status == "connected" else "not_ready", "version": APP_VERSION, "database": db_status}
+
 
 
 # ---------------------------------------------------------------------------

@@ -3,7 +3,7 @@
   "info": {
     "title": "Repo Analyzer API",
     "description": "Language-agnostic repository analysis and knowledge-graph engine backend",
-    "version": "0.15.0"
+    "version": "0.23.0"
   },
   "paths": {
     "/api/v1/health": {
@@ -1010,13 +1010,33 @@
         }
       }
     },
+    "/api/v1/ai/status": {
+      "get": {
+        "tags": [
+          "repository-analysis"
+        ],
+        "summary": "Get Ai Status",
+        "description": "Returns active AI provider status (Session 23 Item 4).\nDerives state from active cached provider instances. Never returns 500.",
+        "operationId": "get_ai_status_api_v1_ai_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/analyses/{run_id}/ask": {
       "post": {
         "tags": [
           "repository-analysis"
         ],
-        "summary": "Ask Repository Question",
-        "operationId": "ask_repository_question_api_v1_analyses__run_id__ask_post",
+        "summary": "Ask Repository Question Route",
+        "operationId": "ask_repository_question_route_api_v1_analyses__run_id__ask_post",
         "parameters": [
           {
             "name": "run_id",
@@ -1906,7 +1926,7 @@
           "repo_url": {
             "type": "string",
             "title": "Repo Url",
-            "description": "Git repository remote URL (HTTP/HTTPS/git)",
+            "description": "HTTPS GitHub repository URL (https://github.com/<owner>/<repo>)",
             "example": "https://github.com/pytest-dev/iniconfig"
           },
           "commit_sha": {

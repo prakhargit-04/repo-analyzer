@@ -54,12 +54,15 @@ def _get_cors_origins() -> list[str]:
     return origins
 
 
+from version import APP_VERSION
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title="Repo Analyzer API",
         description="Language-agnostic repository analysis and knowledge-graph engine backend",
-        version="0.22.0",
+        version=APP_VERSION,
         docs_url="/docs",
+
         redoc_url="/redoc",
         openapi_url="/openapi.json",
         lifespan=lifespan,

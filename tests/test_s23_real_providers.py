@@ -219,3 +219,25 @@ def test_mixed_dimension_retrieval_rejected():
 
     with pytest.raises(ValueError, match="Incompatible"):
         _cosine_sim(query_vector, stored_vector)
+
+
+def test_version_alignment():
+    """Verify /health version == app version == openapi.json version (Item 8A)."""
+    import json
+    from pipeline.version import APP_VERSION
+
+    client = TestClient(app)
+    res = client.get("/api/v1/health")
+    assert res.status_code == 200
+    health_ver = res.json()["version"]
+
+    app_ver = app.version
+
+    with open("openapi.json", "r", encoding="utf-8") as f:
+        openapi_data = json.load(f)
+    openapi_ver = openapi_data["info"]["version"]
+
+    assert health_ver == APP_VERSION
+    assert app_ver == APP_VERSION
+    assert openapi_ver == APP_VERSION
+
