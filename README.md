@@ -36,16 +36,17 @@ GitHub repository URL
 | Vector Retrieval | Run-scoped vector embeddings, similarity search, chunk retrieval API | ✅ Complete |
 | Grounded RAG | Evidence-grounded question-answering with server-side citation validation | ✅ Complete |
 | Security Hardening | Restricted CORS, strict GitHub HTTPS URL validator, sanitized error responses | ✅ Complete |
-| Real Provider Integration | Provider factory wiring (sentence_transformers, OpenAI, Gemini), graceful fallback, EMBEDDING_MODEL_NAME env var | ✅ Complete |
+| Real Provider Integration | Provider factory wiring (sentence_transformers, OpenAI, Gemini), fail-fast validation | ⚠️ Fail-fast wiring complete / live validation pending |
 
 ## Known Limitations
 
 - **Vector search is a linear scan** — embeddings are stored as JSON in SQLite and compared with cosine similarity in Python. No pgvector, no ANN index. Performance degrades with large repositories.
 - **Call resolution is heuristic** — same-file function-name matching, not full Python scope resolution. Labeled `high_confidence`/`low_confidence`/`flagged` (never `certain`).
-- **Test mode answers are placeholders** — with default providers (`LLM_PROVIDER=test`), AI answers are deterministic fixed strings. Real AI requires configuring a provider (see [Test Mode vs Real Mode](#test-mode-vs-real-mode)). Test embeddings are hash-based, not semantic.
+- **Test mode answers are placeholders** — with default providers (`LLM_PROVIDER=test`), AI answers are deterministic fixed strings. Real AI requires configuring a provider (see [docs/ai-modes.md](docs/ai-modes.md)). Test embeddings are deterministic hash-derived vectors (not semantic).
 - **API accepts GitHub HTTPS repos only** — local paths, SSH URLs, non-GitHub hosts, and HTTP are rejected at the API layer. The CLI (`pipeline/main.py`) still accepts local paths.
 - **Not production-ready** — no authentication, no rate limiting, no multi-tenant isolation, no horizontal scaling.
 - **Citation validation checks evidence IDs only** — verifies citation IDs exist in retrieved evidence, not natural language claim correctness.
+
 
 ---
 
