@@ -101,8 +101,20 @@ def answer_repository_question(
 
     # 5. Resolve active LLM provider & generate answer
     active_llm = llm_provider or get_llm_provider()
-    raw_answer = active_llm.generate(prompt=user_prompt, system_prompt=SYSTEM_GROUNDING_PROMPT)
-
+    try:
+        raw_answer = active_llm.generate(prompt=user_prompt, system_prompt=SYSTEM_GROUNDING_PROMPT)
+    except Exception as exc:
+        return {
+            "question": clean_q,
+            "answer": f"LLM answer service encountered an error: {type(exc).__name__}: {exc}",
+            "repository": repo_url,
+            "commit_sha": commit_sha,
+            "run_id": run_id,
+            "citations": [],
+            "retrieved_chunks_count": len(retrieved_chunks),
+            "llm_model": getattr(active_llm, "model_name", "unknown"),
+            "provenance": "AI_GENERATED",
+        }
 
     # 6. Server-side citation validation against authoritative evidence map
     cleaned_answer, validated_citations = validate_citations(raw_answer, evidence_map)

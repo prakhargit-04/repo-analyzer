@@ -79,7 +79,7 @@ class TestLLMProvider(BaseLLMProvider):
 
     def __init__(self, model_name: str = "test-deterministic-rag"):
         self.provider_id = "test"
-        self.name = "test"
+        self.name = "test-llm"
         self.model_name = model_name
 
     def generate(self, prompt: str, system_prompt: Optional[str] = None) -> str:

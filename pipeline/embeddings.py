@@ -61,8 +61,8 @@ class TestEmbeddingProvider(BaseEmbeddingProvider):
 
     def __init__(self, dimension: int = 64):
         self.provider_id = "test"
-        self.name = "test"
-        self.model_name = "sha256-deterministic"
+        self.name = "test-deterministic"
+        self.model_name = "test-deterministic"
         self.model_version = "1.0"
         self.dimension = dimension
 
