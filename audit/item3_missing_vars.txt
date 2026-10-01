@@ -1,3 +1,0 @@
-﻿pipeline/api/routes.py:75:        "CACHE_DIR",
-pipeline/embeddings.py:162:    if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("TESTING"):
-pipeline/rag/llm.py:126:    if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("TESTING"):

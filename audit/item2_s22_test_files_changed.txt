@@ -1,2 +1,0 @@
-﻿tests/test_api.py
-tests/test_s22_security.py

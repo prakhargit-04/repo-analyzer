@@ -1,7 +1,0 @@
-﻿python : WARNING: Package(s) not found: pytest-timeout
-At line:2 char:1
-+ python -m pip show pytest-timeout 2>&1 | Out-File audit\item5_timeout ...
-+ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (WARNING: Packag... pytest-timeout:String) [], RemoteException
-    + FullyQualifiedErrorId : NativeCommandError
- 
