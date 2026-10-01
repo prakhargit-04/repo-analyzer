@@ -31,6 +31,7 @@ from pipeline.rag.llm import (
     LLMResponseError,
 )
 from pipeline.api.app import app
+from pipeline.db.engine import get_engine, create_all_tables
 from pipeline.db.store import retrieve_similar_chunks
 
 
@@ -131,6 +132,8 @@ def test_embedding_stage_failure_does_not_kill_job(monkeypatch):
 
 def test_ask_route_http_error_mapping():
     """Verify custom LLM exceptions map to correct HTTP status codes in /ask endpoint."""
+    engine = get_engine()
+    create_all_tables(engine)
     client = TestClient(app)
 
     # Missing run returns 404
