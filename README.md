@@ -16,7 +16,7 @@ GitHub repository URL
   ↓ Knowledge graph construction (networkx — nodes, edges, call resolution)
   ↓ Health score (weighted composite: complexity, maintainability, security)
   ↓ Source chunking (deterministic line-range chunks + SHA provenance)
-  ↓ Embedding generation (test: random unit vectors; real: configurable)
+  ↓ Embedding generation (test: deterministic hash-derived vectors; real: configurable)
   ↓ Vector storage (JSON-serialised, run-scoped, linear cosine scan)
   ↓ Grounded RAG (retrieval → prompt → LLM → server-side citation validation)
   ↓ FastAPI + async worker + SQLite/PostgreSQL persistence
@@ -95,7 +95,7 @@ Default when no provider env vars are set:
 
 ```bash
 LLM_PROVIDER=test        # Fixed placeholder answers, no API calls
-EMBEDDING_PROVIDER=test  # Random unit vectors, no model download
+EMBEDDING_PROVIDER=test  # Deterministic hash-derived vectors, no model download
 ```
 
 In test mode:
