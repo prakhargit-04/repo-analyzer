@@ -48,3 +48,5 @@ frontend/.next/
 .env
 .env.local
 .env.production
+
+audit/
