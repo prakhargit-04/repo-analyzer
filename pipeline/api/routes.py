@@ -186,6 +186,14 @@ def get_latest_repo_analysis(
     repo_url: str = Query(..., description="Repository URL"),
     db: Session = Depends(get_db_session),
 ):
+    valid, result = validate_github_url(repo_url)
+    if not valid:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=result,
+        )
+    repo_url = result
+
     analysis = get_latest_analysis(db, repo_url)
     if not analysis:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No completed analysis found for repository '{repo_url}'")
@@ -197,8 +205,17 @@ def list_repository_runs(
     repo_url: str = Query(..., description="Repository URL"),
     db: Session = Depends(get_db_session),
 ):
+    valid, result = validate_github_url(repo_url)
+    if not valid:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=result,
+        )
+    repo_url = result
+
     runs = get_all_runs_for_repo(db, repo_url)
     return {"repo_url": repo_url, "total_runs": len(runs), "runs": runs}
+
 
 
 @router.get("/analyses/{run_id}")

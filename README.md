@@ -23,27 +23,29 @@ GitHub repository URL
   ↓ Next.js dashboard (Overview, Findings, Files, Semantic Search, AI Assistant)
 ```
 
-## What's Implemented
+## Pipeline Components & Features
 
-| Session | Feature | Status |
+| Component | Description | Status |
 |---|---|---|
-| S1–S13 | Python parsing, static analysis, knowledge graph, health score, caching | ✅ Complete |
-| S14 | SQLite/PostgreSQL persistence (SQLAlchemy + Alembic) | ✅ Complete |
-| S15 | FastAPI + async worker + job queue | ✅ Complete |
-| S16 | Next.js dashboard (Overview, graph, findings) | ✅ Complete |
-| S17–S18 | Analysis dashboard, files, evidence drilldown, end-to-end stabilization | ✅ Complete |
-| S19 | Source content ingestion, deterministic evidence chunks, SourceChunk persistence | ✅ Complete |
-| S20 | Embedding generation (with versioning), vector storage, repository-scoped retrieval | ✅ Complete |
-| S21 | Evidence-grounded RAG pipeline: retrieval → grounded LLM → citation validation | ✅ Complete |
-| S22 | Repo hygiene, docs, CORS security, GitHub-HTTPS-only URL validation, panel mounting | ✅ Complete |
+| Ingestion & Parsing | Git clone (HTTPS-only), multi-language AST parsing (Python, Java, JS/TS via tree-sitter) | ✅ Complete |
+| Static Analysis | Integrated security & complexity analysis (Radon CC/MI, Bandit, Semgrep, Gitleaks, Lizard) | ✅ Complete |
+| Knowledge Graph | Code entity nodes, dependency import edges, heuristic call resolution, graph export | ✅ Complete |
+| Persistence & API | SQLite/PostgreSQL persistence (SQLAlchemy + Alembic), FastAPI REST API, async worker | ✅ Complete |
+| Dashboard UI | Next.js dashboard (Overview, Findings, Files, Graph, Semantic Search, AI Assistant) | ✅ Complete |
+| Source Chunking | Deterministic line-range source chunking with SHA provenance tracking | ✅ Complete |
+| Vector Retrieval | Run-scoped vector embeddings, similarity search, chunk retrieval API | ✅ Complete |
+| Grounded RAG | Evidence-grounded question-answering with server-side citation validation | ✅ Complete |
+| Security Hardening | Restricted CORS, strict GitHub HTTPS URL validator, sanitized error responses | ✅ Complete |
+| Real Provider Integration | Provider factory wiring (sentence_transformers, OpenAI, Gemini), graceful fallback, EMBEDDING_MODEL_NAME env var | ✅ Complete |
 
 ## Known Limitations
 
-- **Vector search is a linear scan** — embeddings are stored as JSON in SQLite and compared with cosine similarity in Python. No pgvector, no ANN index. Performance degrades with large repositories. (S23+ scope)
+- **Vector search is a linear scan** — embeddings are stored as JSON in SQLite and compared with cosine similarity in Python. No pgvector, no ANN index. Performance degrades with large repositories.
 - **Call resolution is heuristic** — same-file function-name matching, not full Python scope resolution. Labeled `high_confidence`/`low_confidence`/`flagged` (never `certain`).
-- **Test mode answers are placeholders** — with default providers (`LLM_PROVIDER=test`), AI answers are deterministic fixed strings. Real AI requires configuring a provider (see [Test Mode vs Real Mode](#test-mode-vs-real-mode)).
+- **Test mode answers are placeholders** — with default providers (`LLM_PROVIDER=test`), AI answers are deterministic fixed strings. Real AI requires configuring a provider (see [Test Mode vs Real Mode](#test-mode-vs-real-mode)). Test embeddings are hash-based, not semantic.
 - **API accepts GitHub HTTPS repos only** — local paths, SSH URLs, non-GitHub hosts, and HTTP are rejected at the API layer. The CLI (`pipeline/main.py`) still accepts local paths.
 - **Not production-ready** — no authentication, no rate limiting, no multi-tenant isolation, no horizontal scaling.
+- **Citation validation checks evidence IDs only** — verifies citation IDs exist in retrieved evidence, not natural language claim correctness.
 
 ---
 
@@ -119,14 +121,14 @@ EMBEDDING_PROVIDER=sentence_transformers
 EMBEDDING_MODEL_NAME=all-MiniLM-L6-v2
 ```
 
-> **Note:** Real provider integration (installing provider packages, wiring them to the LLM/embedding abstraction) is Session 23. The current code ships the provider abstraction (`pipeline/rag/llm.py`) and test provider only.
+> **Note:** Real provider packages (`sentence-transformers`, `openai`, `google-generativeai`) are optional and listed in `requirements-optional.txt`. Install only what you need: `pip install sentence-transformers` for local embeddings, or `pip install openai` / `pip install google-generativeai` for cloud LLMs.
 
 ---
 
 ## Running Tests
 
 ```bash
-# Backend (217 tests)
+# Backend (251 tests)
 pip install -r requirements.txt
 python -m pytest tests/ -v
 

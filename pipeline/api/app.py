@@ -38,16 +38,15 @@ def _get_cors_origins() -> list[str]:
     Default: http://localhost:3000 and http://127.0.0.1:3000 for local dev.
 
     Production deployments MUST set CORS_ALLOWED_ORIGINS to an explicit,
-    restrictive list.  The wildcard "*" is intentionally never allowed here
-    because allow_credentials=True + "*" is a security misconfiguration
-    (browsers reject it; and it would allow any origin to send credentialed
-    requests).
+    restrictive list. The wildcard "*" is intentionally never allowed here
+    because allow_credentials=True + "*" is a security misconfiguration.
     """
     env_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "").strip()
     if env_origins:
-        origins = [o.strip() for o in env_origins.split(",") if o.strip()]
+        origins = [o.strip() for o in env_origins.split(",") if o.strip() and o.strip() != "*"]
+        if not origins:
+            origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
     else:
-        # Safe dev-only defaults — never wildcard
         origins = [
             "http://localhost:3000",
             "http://127.0.0.1:3000",

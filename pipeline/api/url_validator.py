@@ -52,6 +52,13 @@ def validate_github_url(url: str) -> tuple[bool, str]:
     if not url:
         return False, "Repository URL must not be empty."
 
+    if len(url) > 2048:
+        return False, "Repository URL exceeds maximum length of 2048 characters."
+
+    # Reject percent-encoding or raw control characters / whitespace
+    if "%" in url:
+        return False, "Repository URL must not contain percent-encoded characters."
+
     # Reject whitespace / control characters
     if _CONTROL_RE.search(url):
         return False, "Repository URL must not contain whitespace or control characters."

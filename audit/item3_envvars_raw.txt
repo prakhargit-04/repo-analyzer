@@ -1,0 +1,40 @@
+﻿pipeline/analyzer_contract.py:15:                    disabled in the current environment.
+pipeline/api/app.py:24:    db_url = os.environ.get("DATABASE_URL", "sqlite:///repo_analyzer.db")
+pipeline/api/app.py:35:    Build the CORS allowed origins list from environment.
+pipeline/api/app.py:44:    env_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "").strip()
+pipeline/api/routes.py:63:    db_url = os.environ.get("DATABASE_URL", "sqlite:///repo_analyzer.db")
+pipeline/api/routes.py:74:    return os.environ.get(
+pipeline/api/routes.py:143:    db_url = os.environ.get("DATABASE_URL", "sqlite:///repo_analyzer.db")
+pipeline/db/engine.py:4:DATABASE_URL environment variable controls the backend:
+pipeline/db/engine.py:25:    """Return the DATABASE_URL from environment, falling back to a local SQLite file."""
+pipeline/db/engine.py:26:    return os.environ.get("DATABASE_URL", _DEFAULT_SQLITE_URL)
+pipeline/db/migrations/env.py:2:Alembic migrations environment configuration.
+pipeline/db/migrations/env.py:4:Reads DATABASE_URL from the environment (falls back to sqlite:///repo_analyzer.db).
+pipeline/db/migrations/env.py:25:db_url = os.environ.get("DATABASE_URL")
+pipeline/embeddings.py:9:  - get_embedding_provider: Factory helper resolving provider based on environment config.
+pipeline/embeddings.py:94:        resolved_model = os.environ.get("EMBEDDING_MODEL_NAME", model_name)
+pipeline/embeddings.py:155:    Checks environment variable EMBEDDING_PROVIDER if not passed explicitly.
+pipeline/embeddings.py:156:    In testing environment (PYTEST_CURRENT_TEST set), defaults to TestEmbeddingProvider.
+pipeline/embeddings.py:162:    if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("TESTING"):
+pipeline/embeddings.py:165:    p_name = provider_name or os.environ.get("EMBEDDING_PROVIDER", "test")
+pipeline/embeddings.py:171:        model_name = os.environ.get("EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2")
+pipeline/main.py:34:    db_url = os.environ.get("DATABASE_URL")
+pipeline/main.py:254:        persist_to_db=bool(os.environ.get("DATABASE_URL")),
+pipeline/rag/llm.py:68:    Requires OPENAI_API_KEY environment variable.
+pipeline/rag/llm.py:74:        self.api_key = os.environ.get("OPENAI_API_KEY")
+pipeline/rag/llm.py:78:            raise RuntimeError("OPENAI_API_KEY environment variable is not configured.")
+pipeline/rag/llm.py:100:    Requires GEMINI_API_KEY or GOOGLE_API_KEY environment variable.
+pipeline/rag/llm.py:106:        self.api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+pipeline/rag/llm.py:110:            raise RuntimeError("GEMINI_API_KEY / GOOGLE_API_KEY environment variable is not configured.")
+pipeline/rag/llm.py:124:    Defaults to TestLLMProvider in test environments or when unconfigured.
+pipeline/rag/llm.py:126:    if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("TESTING"):
+pipeline/rag/llm.py:129:    p_name = provider_name or os.environ.get("LLM_PROVIDER", "test")
+pipeline/static_analysis.py:22:  - OSV.dev   : requires outbound network call; wire in the deployed environment
+pipeline/static_analysis.py:138:      "unavailable" -> bandit executable not installed in environment
+pipeline/static_analysis.py:234:            return False, "Package 'lizard' is not installed in this environment (pip install lizard>=1.17)"
+pipeline/static_analysis.py:330:            env={**os.environ},  # pass env through but do not add extras
+pipeline/static_analysis.py:375:    * We do not pass any repository-provided environment variables.
+pipeline/static_analysis.py:471:                # Pass only a safe subset of environment variables.
+pipeline/static_analysis.py:609:        Returns a filtered copy of os.environ that strips secret tokens so
+pipeline/static_analysis.py:621:            k: v for k, v in os.environ.items()
+pipeline/static_analysis.py:903:            k: v for k, v in os.environ.items()

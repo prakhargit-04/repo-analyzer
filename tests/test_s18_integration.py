@@ -45,15 +45,16 @@ def test_env(tmp_path):
     create_all_tables(engine)
 
     client = TestClient(app)
-    yield client, engine, db_url, cache_dir
+    try:
+        yield client, engine, db_url, cache_dir
+    finally:
+        os.environ.pop("DATABASE_URL", None)
+        os.environ.pop("CACHE_DIR", None)
 
-    if "DATABASE_URL" in os.environ:
-        del os.environ["DATABASE_URL"]
-    if "CACHE_DIR" in os.environ:
-        del os.environ["CACHE_DIR"]
 
-
+@pytest.mark.network
 def test_single_persistence_on_worker_execution(test_env):
+
     """
     S18 Requirement 3: Verify that worker execution produces EXACTLY ONE AnalysisRun
     in the database and no duplicate findings or graph records.
@@ -121,20 +122,36 @@ def test_multilanguage_static_analysis_separation(tmp_path):
     assert analysis["security"]["results"] == []
 
 
+@pytest.mark.network
 def test_job_submission_and_cache_hit_flow(test_env, monkeypatch):
+
     """
     S18 Requirements 2 & 7: Verify complete request flow, API endpoints, job polling,
     and subsequent cache-hit handling.
     """
     import static_analysis
+    import pipeline.api.routes as routes_module
+
+    # Mock background worker queue submit_job so POST /analyses doesn't spawn an async thread
+    # competing with manual process_job_task on the same job_id
+    class NoOpQueue:
+        def submit_job(self, job_id, db_url, cache_dir):
+            pass
+
+    monkeypatch.setattr(routes_module, "get_worker_queue", lambda: NoOpQueue())
+
     orig_analyze = static_analysis.analyze_repository
-    def mock_analyze(repo_root, parsed_files):
-        res = orig_analyze(repo_root, parsed_files)
-        # Ensure semgrep sast status doesn't fail due to system CLI missing/erroring
-        if "semgrep" in res:
-            res["semgrep"]["status"] = "success"
+    def mock_analyze(repo_root, parsed_files_rel=None, py_files_rel=None, **kwargs):
+        """Wraps the real analyze_repository; normalises optional external tool sub-scores to success so the
+        test behaves deterministically regardless of external CLI binary presence."""
+        res = orig_analyze(repo_root, parsed_files_rel=parsed_files_rel,
+                           py_files_rel=py_files_rel, **kwargs)
+        for key in ("semgrep_findings", "gitleaks_findings", "osv_vulnerabilities", "semgrep", "gitleaks", "osv"):
+            if key in res and isinstance(res[key], dict):
+                res[key]["status"] = "success"
         return res
     monkeypatch.setattr(static_analysis, "analyze_repository", mock_analyze)
+
 
     client, engine, db_url, cache_dir = test_env
 
@@ -155,7 +172,8 @@ def test_job_submission_and_cache_hit_flow(test_env, monkeypatch):
     res_status = client.get(f"/api/v1/jobs/{job_id}/status")
     assert res_status.status_code == 200
     status_data = res_status.json()
-    assert status_data["status"] in ("completed", "partial")
+    assert status_data["status"] in ("completed", "partial"), f"Job failed with error: {status_data.get('error_message')}"
+
     run_id = status_data["run_id"]
     assert run_id is not None
 

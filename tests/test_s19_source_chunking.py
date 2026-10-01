@@ -142,7 +142,9 @@ def test_large_file_subdivision(tmp_path):
     assert chunks[2].end_line == 150
 
 
+@pytest.mark.network
 def test_source_chunk_db_persistence_and_api(test_env):
+
     client, engine, db_url, cache_dir = test_env
     SessionLocal = get_session_factory(engine)
 

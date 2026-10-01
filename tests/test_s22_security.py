@@ -1,9 +1,9 @@
 """
-Session 22 — Security & Cleanup Tests
+Session 22 â€” Security & Cleanup Tests
 
 Covers:
-  A) URL Validator (api/url_validator.py) — comprehensive edge-case coverage
-  B) CORS configuration (api/app.py) — no wildcard, env-configurable
+  A) URL Validator (api/url_validator.py) â€” comprehensive edge-case coverage
+  B) CORS configuration (api/app.py) â€” no wildcard, env-configurable
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from api.url_validator import validate_github_url
 
 
 # ---------------------------------------------------------------------------
-# URL VALIDATOR — Valid inputs
+# URL VALIDATOR â€” Valid inputs
 # ---------------------------------------------------------------------------
 
 class TestUrlValidatorValid:
@@ -38,7 +38,7 @@ class TestUrlValidatorValid:
 
     def test_git_suffix_and_trailing_slash(self):
         ok, result = validate_github_url("https://github.com/user/repo.git/")
-        # regex anchors — trailing slash after .git may not match; acceptable either way
+        # regex anchors â€” trailing slash after .git may not match; acceptable either way
         # The important thing is it's not treated as a valid extra-segment URL
         # This is an edge case; just assert no crash
         assert isinstance(ok, bool)
@@ -72,7 +72,7 @@ class TestUrlValidatorValid:
 
 
 # ---------------------------------------------------------------------------
-# URL VALIDATOR — Invalid: scheme
+# URL VALIDATOR â€” Invalid: scheme
 # ---------------------------------------------------------------------------
 
 class TestUrlValidatorInvalidScheme:
@@ -103,7 +103,7 @@ class TestUrlValidatorInvalidScheme:
 
 
 # ---------------------------------------------------------------------------
-# URL VALIDATOR — Invalid: host
+# URL VALIDATOR â€” Invalid: host
 # ---------------------------------------------------------------------------
 
 class TestUrlValidatorInvalidHost:
@@ -130,7 +130,7 @@ class TestUrlValidatorInvalidHost:
 
 
 # ---------------------------------------------------------------------------
-# URL VALIDATOR — Invalid: userinfo (SSRF / host confusion tricks)
+# URL VALIDATOR â€” Invalid: userinfo (SSRF / host confusion tricks)
 # ---------------------------------------------------------------------------
 
 class TestUrlValidatorUserinfoTricks:
@@ -145,7 +145,7 @@ class TestUrlValidatorUserinfoTricks:
 
 
 # ---------------------------------------------------------------------------
-# URL VALIDATOR — Invalid: port
+# URL VALIDATOR â€” Invalid: port
 # ---------------------------------------------------------------------------
 
 class TestUrlValidatorPort:
@@ -161,7 +161,7 @@ class TestUrlValidatorPort:
 
 
 # ---------------------------------------------------------------------------
-# URL VALIDATOR — Invalid: path
+# URL VALIDATOR â€” Invalid: path
 # ---------------------------------------------------------------------------
 
 class TestUrlValidatorPath:
@@ -184,7 +184,7 @@ class TestUrlValidatorPath:
     def test_empty_repo_rejected(self):
         ok, reason = validate_github_url("https://github.com/user/")
         # trailing slash but no repo name
-        # This is ambiguous — either rejected or treated as empty repo
+        # This is ambiguous â€” either rejected or treated as empty repo
         if ok:
             # If accepted, the normalized URL must not have empty repo
             assert "//" not in result if (ok, result := validate_github_url("https://github.com/user/")) else True
@@ -201,7 +201,7 @@ class TestUrlValidatorPath:
 
 
 # ---------------------------------------------------------------------------
-# URL VALIDATOR — Invalid: query/fragment
+# URL VALIDATOR â€” Invalid: query/fragment
 # ---------------------------------------------------------------------------
 
 class TestUrlValidatorQueryFragment:
@@ -217,7 +217,7 @@ class TestUrlValidatorQueryFragment:
 
 
 # ---------------------------------------------------------------------------
-# URL VALIDATOR — Invalid: injection / whitespace
+# URL VALIDATOR â€” Invalid: injection / whitespace
 # ---------------------------------------------------------------------------
 
 class TestUrlValidatorInjection:
@@ -327,3 +327,75 @@ class TestCORSConfiguration:
             import importlib
             import api.app as app_module
             importlib.reload(app_module)
+
+
+# ---------------------------------------------------------------------------
+# URL VALIDATOR - Additional edge cases required by S22 audit
+# ---------------------------------------------------------------------------
+
+class TestUrlValidatorAuditCases:
+    """
+    Edge cases mandated by the S22 audit that were absent from the original suite.
+    No existing test was modified; only new cases added.
+    """
+
+    def test_uppercase_github_com_host_accepted(self):
+        ok, result = validate_github_url("https://GITHUB.COM/user/repo")
+        assert ok is True
+        assert result == "https://github.com/user/repo"
+
+    def test_trailing_dot_host_rejected(self):
+        ok, reason = validate_github_url("https://github.com./user/repo")
+        assert ok is False
+        assert isinstance(reason, str) and "github.com" in reason.lower()
+
+    def test_github_com_evil_com_subdomain_rejected(self):
+        ok, reason = validate_github_url("https://github.com.evil.com/user/repo")
+        assert ok is False
+        assert isinstance(reason, str) and ("github.com" in reason.lower() or "host" in reason.lower())
+
+    def test_gist_github_com_rejected(self):
+        ok, reason = validate_github_url("https://gist.github.com/user/abc123")
+        assert ok is False
+        assert isinstance(reason, str) and ("github.com" in reason.lower() or "host" in reason.lower())
+
+    def test_percent_encoded_dot_dot_rejected(self):
+        ok, reason = validate_github_url("https://github.com/user/%2e%2e/etc/passwd")
+        assert ok is False
+        assert isinstance(reason, str) and "percent-encoded" in reason.lower()
+
+    def test_percent_encoded_slash_rejected(self):
+        ok, reason = validate_github_url("https://github.com/user%2frepo")
+        assert ok is False
+        assert isinstance(reason, str) and "percent-encoded" in reason.lower()
+
+    def test_backslash_in_url_rejected(self):
+        ok, reason = validate_github_url(r"https://github.com/user\repo")
+        assert ok is False
+        assert isinstance(reason, str) and len(reason) > 0 and ("form" in reason.lower() or "invalid" in reason.lower() or "control" in reason.lower())
+
+    def test_tree_main_extra_segment_rejected(self):
+        ok, reason = validate_github_url("https://github.com/user/repo/tree/main")
+        assert ok is False
+        assert isinstance(reason, str) and "extra path segments" in reason.lower()
+
+    def test_zero_ip_rejected(self):
+        ok, reason = validate_github_url("https://0.0.0.0/user/repo")
+        assert ok is False
+        assert isinstance(reason, str) and "github.com" in reason.lower()
+
+    def test_ipv6_loopback_rejected(self):
+        ok, reason = validate_github_url("https://[::1]/user/repo")
+        assert ok is False
+        assert isinstance(reason, str) and "github.com" in reason.lower()
+
+    def test_link_local_ip_rejected(self):
+        ok, reason = validate_github_url("https://169.254.169.254/user/repo")
+        assert ok is False
+        assert isinstance(reason, str) and "github.com" in reason.lower()
+
+    def test_decimal_ip_rejected(self):
+        ok, reason = validate_github_url("https://2130706433/user/repo")
+        assert ok is False
+        assert isinstance(reason, str) and "github.com" in reason.lower()
+

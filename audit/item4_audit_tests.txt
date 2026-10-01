@@ -1,0 +1,21 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\prakh\AppData\Local\Programs\Python\Python312\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\prakh\Downloads\repo-analyzer-main\repo-analyzer-main
+plugins: anyio-4.15.1, timeout-2.4.0
+collecting ... collected 12 items
+
+tests/test_s22_security.py::TestUrlValidatorAuditCases::test_uppercase_github_com_host_accepted PASSED [  8%]
+tests/test_s22_security.py::TestUrlValidatorAuditCases::test_trailing_dot_host_rejected PASSED [ 16%]
+tests/test_s22_security.py::TestUrlValidatorAuditCases::test_github_com_evil_com_subdomain_rejected PASSED [ 25%]
+tests/test_s22_security.py::TestUrlValidatorAuditCases::test_gist_github_com_rejected PASSED [ 33%]
+tests/test_s22_security.py::TestUrlValidatorAuditCases::test_percent_encoded_dot_dot_rejected PASSED [ 41%]
+tests/test_s22_security.py::TestUrlValidatorAuditCases::test_percent_encoded_slash_rejected PASSED [ 50%]
+tests/test_s22_security.py::TestUrlValidatorAuditCases::test_backslash_in_url_rejected PASSED [ 58%]
+tests/test_s22_security.py::TestUrlValidatorAuditCases::test_tree_main_extra_segment_rejected PASSED [ 66%]
+tests/test_s22_security.py::TestUrlValidatorAuditCases::test_zero_ip_rejected PASSED [ 75%]
+tests/test_s22_security.py::TestUrlValidatorAuditCases::test_ipv6_loopback_rejected PASSED [ 83%]
+tests/test_s22_security.py::TestUrlValidatorAuditCases::test_link_local_ip_rejected PASSED [ 91%]
+tests/test_s22_security.py::TestUrlValidatorAuditCases::test_decimal_ip_rejected PASSED [100%]
+
+============================= 12 passed in 0.22s ==============================

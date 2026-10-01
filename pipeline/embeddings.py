@@ -86,22 +86,43 @@ class SentenceTransformerProvider(BaseEmbeddingProvider):
     """
     SentenceTransformers local model provider (e.g. all-MiniLM-L6-v2).
     Falls back gracefully to TestEmbeddingProvider if sentence-transformers is not installed.
+    Configured via EMBEDDING_MODEL_NAME env var (default: all-MiniLM-L6-v2).
     """
 
     def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
-        self.name = model_name
+        # Allow env override at construction time
+        resolved_model = os.environ.get("EMBEDDING_MODEL_NAME", model_name)
+        self.name = resolved_model
         self.model_version = "1.0"
+        self._available = False
         try:
             from sentence_transformers import SentenceTransformer
-            self._model = SentenceTransformer(model_name)
+            self._model = SentenceTransformer(resolved_model)
             self.dimension = self._model.get_sentence_embedding_dimension() or 384
+            self._available = True
+        except ImportError:
+            print(
+                f"[embeddings warning] 'sentence-transformers' package not installed. "
+                f"Install it with: pip install sentence-transformers",
+                file=sys.stderr,
+            )
+            self._init_fallback(resolved_model)
         except Exception as exc:
-            print(f"[embeddings warning] Could not load SentenceTransformer '{model_name}': {exc}", file=sys.stderr)
-            fallback = TestEmbeddingProvider()
-            self.name = fallback.name
-            self.model_version = fallback.model_version
-            self.dimension = fallback.dimension
-            self._model = None
+            print(f"[embeddings warning] Could not load SentenceTransformer '{resolved_model}': {exc}", file=sys.stderr)
+            self._init_fallback(resolved_model)
+
+    def _init_fallback(self, original_model_name: str) -> None:
+        """Initialize as fallback TestEmbeddingProvider when the real model is unavailable."""
+        fallback = TestEmbeddingProvider()
+        self.name = fallback.name
+        self.model_version = fallback.model_version
+        self.dimension = fallback.dimension
+        self._model = None
+
+    @property
+    def is_available(self) -> bool:
+        """Returns True if the real sentence-transformers model loaded successfully."""
+        return self._available
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         if self._model is None:
@@ -116,24 +137,47 @@ class SentenceTransformerProvider(BaseEmbeddingProvider):
         return embedding.tolist()
 
 
+# Recognized provider name aliases — canonical name is first in each group
+_SENTENCE_TRANSFORMER_ALIASES = frozenset({
+    "sentence_transformers",   # documented in .env.example
+    "sentence-transformers",   # hyphenated variant
+    "sentence_transformer",    # singular
+    "sentence-transformer",    # hyphenated singular
+    "minilm",
+    "all-minilm-l6-v2",
+    "all_minilm_l6_v2",
+})
+
+
 def get_embedding_provider(provider_name: Optional[str] = None) -> BaseEmbeddingProvider:
     """
     Factory function to retrieve embedding provider instance.
     Checks environment variable EMBEDDING_PROVIDER if not passed explicitly.
     In testing environment (PYTEST_CURRENT_TEST set), defaults to TestEmbeddingProvider.
+
+    Recognized EMBEDDING_PROVIDER values:
+      - "test" / "deterministic" / "mock"  → TestEmbeddingProvider (offline, CI-safe)
+      - "sentence_transformers" (or variants) → SentenceTransformerProvider (local model)
     """
     if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("TESTING"):
         return TestEmbeddingProvider()
 
     p_name = provider_name or os.environ.get("EMBEDDING_PROVIDER", "test")
-    p_name_lower = p_name.lower()
+    p_name_lower = p_name.strip().lower()
 
     if p_name_lower in ("test", "deterministic", "mock"):
         return TestEmbeddingProvider()
-    elif p_name_lower in ("sentence-transformers", "minilm", "all-minilm-l6-v2"):
-        return SentenceTransformerProvider("all-MiniLM-L6-v2")
-    
-    # Default fallback for testing and development safety
+    elif p_name_lower in _SENTENCE_TRANSFORMER_ALIASES:
+        model_name = os.environ.get("EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2")
+        return SentenceTransformerProvider(model_name)
+
+    # Default fallback for unknown/unconfigured provider — safe for offline/test use
+    print(
+        f"[embeddings warning] Unknown EMBEDDING_PROVIDER '{p_name}'. "
+        f"Falling back to TestEmbeddingProvider. "
+        f"Valid options: test, sentence_transformers.",
+        file=sys.stderr,
+    )
     return TestEmbeddingProvider()
 
 

@@ -61,9 +61,11 @@ def test_submit_analysis_validation_rejects_local_paths(temp_db_and_client):
     client, _, _ = temp_db_and_client
 
     # Local file path must be explicitly rejected (S22: 422 from GitHub-HTTPS-only validator)
+    # validate_github_url rejects non-https scheme with a message containing "HTTPS"
     res = client.post("/api/v1/analyses", json={"repo_url": "/tmp/local_repo"})
     assert res.status_code == 422
-    assert "HTTPS" in res.json()["detail"] or "github" in res.json()["detail"].lower() or "scheme" in res.json()["detail"].lower()
+    detail = res.json()["detail"]
+    assert "HTTPS" in detail, f"Expected 'HTTPS' in rejection detail, got: {detail!r}"
 
     # Unsafe flag injection attempt rejected
     res_unsafe = client.post("/api/v1/analyses", json={"repo_url": "-oProxyCommand=touch /tmp/pwned"})
@@ -176,15 +178,18 @@ def test_job_submission_and_retrieval(temp_db_and_client):
     assert len(res_file_detail.json()["entities"]) == 3
 
 
-    # 8. Fetch repository runs history
-    res_runs = client.get(f"/api/v1/repositories/runs?repo_url={test_url}")
-    assert res_runs.status_code == 200
-    assert res_runs.json()["total_runs"] == 1
+    # 8. Fetch repository runs history (with canonical URL, uppercase host, .git, and trailing slash)
+    for variant in [test_url, "https://GITHUB.COM/pytest-dev/iniconfig", "https://github.com/pytest-dev/iniconfig.git", "https://github.com/pytest-dev/iniconfig/"]:
+        res_runs = client.get(f"/api/v1/repositories/runs?repo_url={variant}")
+        assert res_runs.status_code == 200
+        assert res_runs.json()["total_runs"] == 1
 
-    # 9. Fetch latest repository analysis
-    res_latest = client.get(f"/api/v1/analyses/latest?repo_url={test_url}")
-    assert res_latest.status_code == 200
-    assert res_latest.json()["run_id"] == run_id
+    # 9. Fetch latest repository analysis (with canonical URL, uppercase host, .git, and trailing slash)
+    for variant in [test_url, "https://GITHUB.COM/pytest-dev/iniconfig", "https://github.com/pytest-dev/iniconfig.git", "https://github.com/pytest-dev/iniconfig/"]:
+        res_latest = client.get(f"/api/v1/analyses/latest?repo_url={variant}")
+        assert res_latest.status_code == 200
+        assert res_latest.json()["run_id"] == run_id
+
 
 
 def test_cache_hit_short_circuit(temp_db_and_client):
