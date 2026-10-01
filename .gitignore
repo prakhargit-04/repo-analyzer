@@ -8,6 +8,18 @@ __pycache__/
 .coverage
 htmlcov/
 .cache/
+.cache_new/
+
+# Generated database files — created automatically on first run
+*.db
+*.db-shm
+*.db-wal
+
+# Generated output / analysis JSON artifacts — not fixtures
+*_output.json
+local_output.json
+output.json
+sample_output_*.json
 
 # Archives & Temporary files
 *.zip
@@ -24,4 +36,15 @@ ENV/
 .idea/
 .DS_Store
 Thumbs.db
-.cache_new/ 
+
+# Node / Frontend
+node_modules/
+.next/
+out/
+frontend/build/
+frontend/.next/
+
+# Environment secrets — never commit real values
+.env
+.env.local
+.env.production
