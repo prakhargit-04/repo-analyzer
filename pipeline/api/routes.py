@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from clone import is_remote_repo_url, is_safe_repo_url, resolve_remote_sha
+from clone import resolve_remote_sha
+from api.url_validator import validate_github_url
 from db.engine import get_engine, get_session_factory
 from db.models import (
     AnalysisRun,
@@ -104,20 +105,14 @@ def submit_analysis(
     req: SubmitAnalysisRequest,
     db: Session = Depends(get_db_session),
 ):
-    repo_url = req.repo_url.strip()
-
-    # Reject local directory paths explicitly
-    if not is_remote_repo_url(repo_url):
+    # Strict server-side GitHub HTTPS-only URL validation (S22)
+    valid, result = validate_github_url(req.repo_url)
+    if not valid:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Local file paths are not accepted via the API. Please provide a remote Git URL (https://, http://, git@)."
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=result,
         )
-
-    if not is_safe_repo_url(repo_url):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid or unsafe repository URL format: '{repo_url}'"
-        )
+    repo_url = result  # Use normalized URL
 
     # 1. Pre-clone SHA resolution via git ls-remote
     resolved_sha = req.commit_sha

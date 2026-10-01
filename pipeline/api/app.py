@@ -1,5 +1,5 @@
 """
-FastAPI application entrypoint for Repo Analyzer (S15).
+FastAPI application entrypoint for Repo Analyzer (S15, updated S22).
 """
 from __future__ import annotations
 import os
@@ -30,31 +30,49 @@ async def lifespan(app: FastAPI):
     yield
 
 
+def _get_cors_origins() -> list[str]:
+    """
+    Build the CORS allowed origins list from environment.
+
+    CORS_ALLOWED_ORIGINS (env var): comma-separated list of allowed origins.
+    Default: http://localhost:3000 and http://127.0.0.1:3000 for local dev.
+
+    Production deployments MUST set CORS_ALLOWED_ORIGINS to an explicit,
+    restrictive list.  The wildcard "*" is intentionally never allowed here
+    because allow_credentials=True + "*" is a security misconfiguration
+    (browsers reject it; and it would allow any origin to send credentialed
+    requests).
+    """
+    env_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "").strip()
+    if env_origins:
+        origins = [o.strip() for o in env_origins.split(",") if o.strip()]
+    else:
+        # Safe dev-only defaults — never wildcard
+        origins = [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ]
+    return origins
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title="Repo Analyzer API",
         description="Language-agnostic repository analysis and knowledge-graph engine backend",
-        version="0.15.0",
+        version="0.22.0",
         docs_url="/docs",
         redoc_url="/redoc",
         openapi_url="/openapi.json",
         lifespan=lifespan,
     )
 
-    # CORS configuration
-    origins = [
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:8000",
-        "http://127.0.0.1:8000",
-        "*",
-    ]
+    # CORS configuration — env-configurable, never wildcarded with credentials
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=origins,
+        allow_origins=_get_cors_origins(),
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization"],
     )
 
     # Global unhandled exception handler to prevent leaking internal traces or file paths

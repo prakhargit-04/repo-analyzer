@@ -60,14 +60,22 @@ def test_health_and_readiness_endpoints(temp_db_and_client):
 def test_submit_analysis_validation_rejects_local_paths(temp_db_and_client):
     client, _, _ = temp_db_and_client
 
-    # Local file path must be explicitly rejected
+    # Local file path must be explicitly rejected (S22: 422 from GitHub-HTTPS-only validator)
     res = client.post("/api/v1/analyses", json={"repo_url": "/tmp/local_repo"})
-    assert res.status_code == 400
-    assert "Local file paths are not accepted" in res.json()["detail"]
+    assert res.status_code == 422
+    assert "HTTPS" in res.json()["detail"] or "github" in res.json()["detail"].lower() or "scheme" in res.json()["detail"].lower()
 
     # Unsafe flag injection attempt rejected
     res_unsafe = client.post("/api/v1/analyses", json={"repo_url": "-oProxyCommand=touch /tmp/pwned"})
-    assert res_unsafe.status_code == 400
+    assert res_unsafe.status_code == 422
+
+    # Non-GitHub host rejected
+    res_gitlab = client.post("/api/v1/analyses", json={"repo_url": "https://gitlab.com/user/repo"})
+    assert res_gitlab.status_code == 422
+
+    # HTTP (non-HTTPS) rejected
+    res_http = client.post("/api/v1/analyses", json={"repo_url": "http://github.com/user/repo"})
+    assert res_http.status_code == 422
 
 
 def test_job_submission_and_retrieval(temp_db_and_client):
