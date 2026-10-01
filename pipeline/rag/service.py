@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional
 from sqlalchemy.orm import Session
 
 from db.store import retrieve_similar_chunks, get_analysis_by_run_id
-from rag.llm import BaseLLMProvider, get_llm_provider
+from rag.llm import BaseLLMProvider, get_llm_provider, LLMError, LLMResponseError
 from rag.context_builder import build_evidence_context, build_rag_user_prompt, SYSTEM_GROUNDING_PROMPT
 from rag.citation_validator import validate_citations
 
@@ -103,18 +103,13 @@ def answer_repository_question(
     active_llm = llm_provider or get_llm_provider()
     try:
         raw_answer = active_llm.generate(prompt=user_prompt, system_prompt=SYSTEM_GROUNDING_PROMPT)
+    except LLMError:
+        raise  # Already typed — route handler maps to correct HTTP status code
     except Exception as exc:
-        return {
-            "question": clean_q,
-            "answer": f"LLM answer service encountered an error: {type(exc).__name__}: {exc}",
-            "repository": repo_url,
-            "commit_sha": commit_sha,
-            "run_id": run_id,
-            "citations": [],
-            "retrieved_chunks_count": len(retrieved_chunks),
-            "llm_model": getattr(active_llm, "model_name", "unknown"),
-            "provenance": "AI_GENERATED",
-        }
+        # Wrap unexpected provider errors so the route never returns a bare 500
+        raise LLMResponseError(
+            f"LLM provider failed unexpectedly ({type(exc).__name__})"
+        ) from exc
 
     # 6. Server-side citation validation against authoritative evidence map
     cleaned_answer, validated_citations = validate_citations(raw_answer, evidence_map)

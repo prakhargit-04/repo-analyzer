@@ -241,3 +241,252 @@ def test_version_alignment():
     assert app_ver == APP_VERSION
     assert openapi_ver == APP_VERSION
 
+
+# ---------------------------------------------------------------------------
+# RESTORED: Embedding provider alias resolution (from old S23 class-based tests)
+# These encode current factory behaviour and were lost in the S23 rewrite.
+# ---------------------------------------------------------------------------
+
+def test_embedding_mock_alias_resolves_to_test_provider():
+    """'mock' alias must resolve to TestEmbeddingProvider (factory still supports it)."""
+    os.environ.pop("EMBEDDING_PROVIDER", None)
+    p = get_embedding_provider("mock")
+    assert isinstance(p, TestEmbeddingProvider)
+
+
+def test_embedding_deterministic_alias_resolves_to_test_provider():
+    """'deterministic' alias must resolve to TestEmbeddingProvider."""
+    os.environ.pop("EMBEDDING_PROVIDER", None)
+    p = get_embedding_provider("deterministic")
+    assert isinstance(p, TestEmbeddingProvider)
+
+
+def test_embedding_whitespace_in_provider_name_stripped():
+    """Provider name with surrounding whitespace must still resolve correctly."""
+    os.environ.pop("EMBEDDING_PROVIDER", None)
+    p = get_embedding_provider("  test  ")
+    assert isinstance(p, TestEmbeddingProvider)
+
+
+def test_embedding_env_var_drives_selection(monkeypatch):
+    """EMBEDDING_PROVIDER env var drives factory selection when no explicit name given."""
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "test")
+    p = get_embedding_provider()
+    assert isinstance(p, TestEmbeddingProvider)
+
+
+def test_embedding_env_model_name_respected(monkeypatch):
+    """EMBEDDING_MODEL_NAME is accepted without crashing when provider is 'test'."""
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "test")
+    monkeypatch.setenv("EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2")
+    # 'test' ignores model name, but must not raise
+    p = get_embedding_provider()
+    assert isinstance(p, TestEmbeddingProvider)
+
+
+# ---------------------------------------------------------------------------
+# RESTORED: format_chunk_for_embedding edge cases
+# test_s20 covers only the "full chunk" path; these 8 cases were in old S23.
+# ---------------------------------------------------------------------------
+
+_FULL_CHUNK = {
+    "file_path": "src/auth.py",
+    "language": "python",
+    "start_line": 15,
+    "end_line": 35,
+    "entity_name": "authenticate",
+    "entity_type": "function",
+    "chunk_text": "def authenticate(user, password):\n    return verify_user(user, password)",
+}
+
+
+def test_format_chunk_includes_file_path():
+    from pipeline.embeddings import format_chunk_for_embedding
+    out = format_chunk_for_embedding(_FULL_CHUNK)
+    assert "src/auth.py" in out
+
+
+def test_format_chunk_includes_language():
+    from pipeline.embeddings import format_chunk_for_embedding
+    out = format_chunk_for_embedding(_FULL_CHUNK)
+    assert "python" in out
+
+
+def test_format_chunk_includes_line_range():
+    from pipeline.embeddings import format_chunk_for_embedding
+    out = format_chunk_for_embedding(_FULL_CHUNK)
+    assert "15" in out
+    assert "35" in out
+
+
+def test_format_chunk_includes_entity_info():
+    from pipeline.embeddings import format_chunk_for_embedding
+    out = format_chunk_for_embedding(_FULL_CHUNK)
+    assert "authenticate" in out
+    assert "function" in out
+
+
+def test_format_chunk_includes_chunk_text():
+    from pipeline.embeddings import format_chunk_for_embedding
+    out = format_chunk_for_embedding(_FULL_CHUNK)
+    assert "def authenticate" in out
+
+
+def test_format_chunk_idempotent():
+    """Same chunk always produces identical formatted text."""
+    from pipeline.embeddings import format_chunk_for_embedding
+    assert format_chunk_for_embedding(_FULL_CHUNK) == format_chunk_for_embedding(_FULL_CHUNK)
+
+
+def test_format_chunk_missing_entity_graceful():
+    """Chunk without entity_name/type must not raise and must include file path."""
+    from pipeline.embeddings import format_chunk_for_embedding
+    chunk = {
+        "file_path": "src/util.py",
+        "language": "python",
+        "start_line": 1,
+        "end_line": 10,
+        "chunk_text": "# utility module",
+    }
+    out = format_chunk_for_embedding(chunk)
+    assert "src/util.py" in out
+    assert "utility module" in out
+
+
+def test_format_chunk_empty_text_graceful():
+    """Chunk with empty chunk_text must not raise."""
+    from pipeline.embeddings import format_chunk_for_embedding
+    chunk = {
+        "file_path": "src/empty.py",
+        "language": "python",
+        "start_line": 1,
+        "end_line": 1,
+        "chunk_text": "",
+    }
+    out = format_chunk_for_embedding(chunk)
+    assert "src/empty.py" in out
+
+
+def test_format_chunk_missing_language_defaults_unknown():
+    """Missing language must default to 'unknown', not crash."""
+    from pipeline.embeddings import format_chunk_for_embedding
+    chunk = {"file_path": "src/x.py", "start_line": 1, "end_line": 5, "chunk_text": "pass"}
+    out = format_chunk_for_embedding(chunk)
+    assert "unknown" in out
+
+
+# ---------------------------------------------------------------------------
+# RESTORED: LLM provider factory alias resolution
+# ---------------------------------------------------------------------------
+
+def test_llm_mock_alias_resolves_to_test_llm():
+    """'mock' alias resolves to TestLLMProvider."""
+    os.environ.pop("LLM_PROVIDER", None)
+    p = get_llm_provider("mock")
+    assert isinstance(p, TestLLMProvider)
+
+
+def test_llm_deterministic_alias_resolves_to_test_llm():
+    """'deterministic' alias resolves to TestLLMProvider."""
+    os.environ.pop("LLM_PROVIDER", None)
+    p = get_llm_provider("deterministic")
+    assert isinstance(p, TestLLMProvider)
+
+
+def test_llm_openai_resolves_to_openai_provider():
+    """'openai' resolves to OpenAILLMProvider (init-only, no generate call)."""
+    os.environ.pop("LLM_PROVIDER", None)
+    try:
+        p = get_llm_provider("openai")
+    except LLMNotConfiguredError as e:
+        pytest.skip(f"openai package not installed: {e}")
+    assert isinstance(p, OpenAILLMProvider)
+
+
+def test_llm_gemini_resolves_to_gemini_provider():
+    """'gemini' resolves to GeminiLLMProvider."""
+    os.environ.pop("LLM_PROVIDER", None)
+    try:
+        p = get_llm_provider("gemini")
+    except LLMNotConfiguredError as e:
+        pytest.skip(f"google-generativeai package not installed: {e}")
+    assert isinstance(p, GeminiLLMProvider)
+
+
+def test_llm_google_alias_resolves_to_gemini_provider():
+    """'google' alias resolves to GeminiLLMProvider."""
+    os.environ.pop("LLM_PROVIDER", None)
+    try:
+        p = get_llm_provider("google")
+    except LLMNotConfiguredError as e:
+        pytest.skip(f"google-generativeai package not installed: {e}")
+    assert isinstance(p, GeminiLLMProvider)
+
+
+def test_llm_env_var_drives_selection(monkeypatch):
+    """LLM_PROVIDER env var drives factory selection when no explicit name given."""
+    monkeypatch.setenv("LLM_PROVIDER", "test")
+    p = get_llm_provider()
+    assert isinstance(p, TestLLMProvider)
+
+
+# ---------------------------------------------------------------------------
+# RESTORED: LLM provider name / model assertions (TestRealProviderKeyGuard)
+# These test provider attributes, not secret leakage; S23 changes exception
+# type from RuntimeError to LLMNotConfiguredError, already covered above.
+# ---------------------------------------------------------------------------
+
+def test_openai_provider_name():
+    """OpenAILLMProvider.name must equal 'openai'."""
+    try:
+        p = OpenAILLMProvider()
+    except LLMNotConfiguredError:
+        pytest.skip("openai package not installed")
+    assert p.name == "openai"
+
+
+def test_gemini_provider_name():
+    """GeminiLLMProvider.name must equal 'gemini'."""
+    try:
+        p = GeminiLLMProvider()
+    except LLMNotConfiguredError:
+        pytest.skip("google-generativeai package not installed")
+    assert p.name == "gemini"
+
+
+def test_openai_default_model():
+    """OpenAILLMProvider default model_name must contain 'gpt'."""
+    try:
+        p = OpenAILLMProvider()
+    except LLMNotConfiguredError:
+        pytest.skip("openai package not installed")
+    assert "gpt" in p.model_name.lower()
+
+
+def test_gemini_default_model():
+    """GeminiLLMProvider default model_name must contain 'gemini'."""
+    try:
+        p = GeminiLLMProvider()
+    except LLMNotConfiguredError:
+        pytest.skip("google-generativeai package not installed")
+    assert "gemini" in p.model_name.lower()
+
+
+def test_openai_custom_model():
+    """OpenAILLMProvider respects explicit model_name argument."""
+    try:
+        p = OpenAILLMProvider(model_name="gpt-4o")
+    except LLMNotConfiguredError:
+        pytest.skip("openai package not installed")
+    assert p.model_name == "gpt-4o"
+
+
+def test_gemini_custom_model():
+    """GeminiLLMProvider respects explicit model_name argument."""
+    try:
+        p = GeminiLLMProvider(model_name="gemini-1.5-pro")
+    except LLMNotConfiguredError:
+        pytest.skip("google-generativeai package not installed")
+    assert p.model_name == "gemini-1.5-pro"
+
+

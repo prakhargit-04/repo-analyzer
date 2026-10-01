@@ -23,7 +23,16 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "pipeline", "ap
 
 from embeddings import TestEmbeddingProvider
 from embeddings_stage import generate_source_embeddings
-from rag.llm import TestLLMProvider, get_llm_provider
+from rag.llm import (
+    TestLLMProvider,
+    get_llm_provider,
+    LLMError,
+    LLMAuthenticationError,
+    LLMRateLimitError,
+    LLMTimeoutError,
+    LLMNotConfiguredError,
+    LLMResponseError,
+)
 from rag.context_builder import build_evidence_context, build_rag_user_prompt
 from rag.citation_validator import validate_citations
 from rag.service import answer_repository_question
@@ -198,6 +207,7 @@ class TestRAGServiceSuite:
         assert res["retrieved_chunks_count"] == 0
 
     def test_rag_llm_failure_handling(self, db_session, sample_analysis_result):
+        """S23: service raises typed LLMResponseError (not graceful-200) when generate() fails."""
         emb_provider = TestEmbeddingProvider(dimension=64)
         embs, _ = generate_source_embeddings(
             sample_analysis_result["source_chunks"],
@@ -211,18 +221,19 @@ class TestRAGServiceSuite:
 
         class FailingLLM(TestLLMProvider):
             def generate(self, prompt, system_prompt=None):
-                raise RuntimeError("LLM API Outage")
+                raise LLMResponseError("Simulated network failure")
 
-        res = answer_repository_question(
-            db_session,
-            run_id=run_id,
-            question="Where is authentication?",
-            llm_provider=FailingLLM(),
-            embedding_provider=emb_provider,
-        )
-
-        assert "LLM answer service encountered an error" in res["answer"]
-        assert res["retrieved_chunks_count"] > 0
+        with pytest.raises(LLMResponseError) as exc_info:
+            answer_repository_question(
+                db_session,
+                run_id=run_id,
+                question="Where is authentication?",
+                llm_provider=FailingLLM(),
+                embedding_provider=emb_provider,
+            )
+        assert exc_info.value.status_code == 502
+        assert "secret" not in str(exc_info.value).lower()
+        assert "traceback" not in str(exc_info.value).lower()
 
 
 class TestFastAPIRAGEndpoint:
@@ -260,3 +271,107 @@ class TestFastAPIRAGEndpoint:
         assert data["retrieved_chunks_count"] > 0
 
         app.dependency_overrides.clear()
+
+
+class TestAskRouteHTTPMapping:
+    """S23 Item 2: /ask route maps each LLMError subclass to the correct HTTP status code."""
+
+    def _make_run_with_embeddings(self, db_session, sample_analysis_result):
+        emb_provider = TestEmbeddingProvider(dimension=64)
+        embs, _ = generate_source_embeddings(
+            sample_analysis_result["source_chunks"],
+            repo_url=sample_analysis_result["repository"],
+            commit_sha=sample_analysis_result["commit_sha"],
+            provider=emb_provider,
+        )
+        sample_analysis_result["source_embeddings"] = embs
+        run_id = persist_analysis(db_session, sample_analysis_result)
+        db_session.commit()
+        return run_id, emb_provider
+
+    def _client_with_db(self, db_session):
+        from api.routes import get_db_session
+        app.dependency_overrides[get_db_session] = lambda: (yield db_session)
+        return TestClient(app)
+
+    def _ask(self, client, run_id):
+        return client.post(f"/api/v1/analyses/{run_id}/ask", json={"question": "test?"})
+
+    def test_authentication_error_returns_502(self, db_session, sample_analysis_result):
+        """LLMAuthenticationError (bad API key) → HTTP 502."""
+        run_id, emb_p = self._make_run_with_embeddings(db_session, sample_analysis_result)
+        import unittest.mock as mock
+        with mock.patch("rag.service.get_llm_provider") as mock_factory:
+            failing = TestLLMProvider()
+            failing.generate = mock.Mock(side_effect=LLMAuthenticationError("key rejected"))
+            mock_factory.return_value = failing
+            client = self._client_with_db(db_session)
+            resp = self._ask(client, run_id)
+        app.dependency_overrides.clear()
+        assert resp.status_code == 502
+        assert "secret" not in resp.text.lower()
+        assert "traceback" not in resp.text.lower()
+
+    def test_rate_limit_error_returns_429(self, db_session, sample_analysis_result):
+        """LLMRateLimitError → HTTP 429."""
+        run_id, emb_p = self._make_run_with_embeddings(db_session, sample_analysis_result)
+        import unittest.mock as mock
+        with mock.patch("rag.service.get_llm_provider") as mock_factory:
+            failing = TestLLMProvider()
+            failing.generate = mock.Mock(side_effect=LLMRateLimitError("quota exceeded"))
+            mock_factory.return_value = failing
+            client = self._client_with_db(db_session)
+            resp = self._ask(client, run_id)
+        app.dependency_overrides.clear()
+        assert resp.status_code == 429
+
+    def test_timeout_error_returns_504(self, db_session, sample_analysis_result):
+        """LLMTimeoutError → HTTP 504."""
+        run_id, emb_p = self._make_run_with_embeddings(db_session, sample_analysis_result)
+        import unittest.mock as mock
+        with mock.patch("rag.service.get_llm_provider") as mock_factory:
+            failing = TestLLMProvider()
+            failing.generate = mock.Mock(side_effect=LLMTimeoutError("30s timeout"))
+            mock_factory.return_value = failing
+            client = self._client_with_db(db_session)
+            resp = self._ask(client, run_id)
+        app.dependency_overrides.clear()
+        assert resp.status_code == 504
+
+    def test_not_configured_error_returns_503(self, db_session, sample_analysis_result):
+        """LLMNotConfiguredError → HTTP 503."""
+        run_id, emb_p = self._make_run_with_embeddings(db_session, sample_analysis_result)
+        import unittest.mock as mock
+        with mock.patch("rag.service.get_llm_provider") as mock_factory:
+            mock_factory.side_effect = LLMNotConfiguredError("LLM_PROVIDER not set")
+            client = self._client_with_db(db_session)
+            resp = self._ask(client, run_id)
+        app.dependency_overrides.clear()
+        assert resp.status_code == 503
+
+    def test_response_error_returns_502(self, db_session, sample_analysis_result):
+        """LLMResponseError (network/malformed) → HTTP 502."""
+        run_id, emb_p = self._make_run_with_embeddings(db_session, sample_analysis_result)
+        import unittest.mock as mock
+        with mock.patch("rag.service.get_llm_provider") as mock_factory:
+            failing = TestLLMProvider()
+            failing.generate = mock.Mock(side_effect=LLMResponseError("malformed response"))
+            mock_factory.return_value = failing
+            client = self._client_with_db(db_session)
+            resp = self._ask(client, run_id)
+        app.dependency_overrides.clear()
+        assert resp.status_code == 502
+
+    def test_unexpected_exception_wrapped_as_502(self, db_session, sample_analysis_result):
+        """Raw RuntimeError from generate() is wrapped as LLMResponseError → HTTP 502 (no bare 500)."""
+        run_id, emb_p = self._make_run_with_embeddings(db_session, sample_analysis_result)
+        import unittest.mock as mock
+        with mock.patch("rag.service.get_llm_provider") as mock_factory:
+            failing = TestLLMProvider()
+            failing.generate = mock.Mock(side_effect=RuntimeError("unexpected crash"))
+            mock_factory.return_value = failing
+            client = self._client_with_db(db_session)
+            resp = self._ask(client, run_id)
+        app.dependency_overrides.clear()
+        assert resp.status_code == 502
+        assert "secret" not in resp.text.lower()
