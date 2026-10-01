@@ -18,16 +18,20 @@ import { StatsGrid } from "@/components/dashboard/StatsGrid";
 import { HealthScorePanel } from "@/components/dashboard/HealthScorePanel";
 import { FindingsPanel } from "@/components/dashboard/FindingsPanel";
 import { FilesPanel } from "@/components/dashboard/FilesPanel";
+import { SemanticSearchPanel } from "@/components/dashboard/SemanticSearchPanel";
+import { RepositoryAssistantPanel } from "@/components/dashboard/RepositoryAssistantPanel";
 import { repoDisplayName } from "@/lib/dashboard-utils";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type TabId = "overview" | "findings" | "files";
+type TabId = "overview" | "findings" | "files" | "search" | "assistant";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "findings", label: "Findings" },
   { id: "files", label: "Files" },
+  { id: "search", label: "Semantic Search" },
+  { id: "assistant", label: "AI Assistant" },
 ];
 
 // ─── Full-page spinner ────────────────────────────────────────────────────────
@@ -104,6 +108,14 @@ function AnalysisDashboard({ id }: { id: string }) {
     params.delete("file");
     params.delete("offset_f");
     router.push(`/analyses/${id}?${params.toString()}`);
+  };
+
+  /**
+   * Navigate to the Files tab with a file pre-selected (used by Assistant
+   * panel when a citation is clicked to open the source evidence location).
+   */
+  const goToFileFromCitation = (filePath: string, _line: number) => {
+    goToFile(filePath);
   };
 
   // ── Initial load + polling (preserved from S16) ───────────────────────────
@@ -329,7 +341,7 @@ function AnalysisDashboard({ id }: { id: string }) {
           <>
             {/* Tab bar */}
             <div className="border-b border-slate-800">
-              <div className="flex gap-0">
+              <div className="flex gap-0 overflow-x-auto">
                 {TABS.map((tab) => {
                   const active = activeTab === tab.id;
                   return (
@@ -337,7 +349,7 @@ function AnalysisDashboard({ id }: { id: string }) {
                       key={tab.id}
                       id={`tab-${tab.id}`}
                       onClick={() => setTab(tab.id)}
-                      className={`px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${
+                      className={`px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
                         active
                           ? "border-blue-500 text-white"
                           : "border-transparent text-slate-400 hover:text-white hover:border-slate-600"
@@ -405,6 +417,50 @@ function AnalysisDashboard({ id }: { id: string }) {
               {/* ── Files tab ── */}
               {activeTab === "files" && (
                 <FilesPanel runId={runId} onGoToFindings={goToFindings} />
+              )}
+
+              {/* ── Semantic Search tab (S20) ── */}
+              {activeTab === "search" && (
+                <div className="space-y-4">
+                  <div>
+                    <h2 className="text-xl font-bold mb-1">Semantic Search</h2>
+                    <p className="text-slate-400 text-sm">
+                      Query this repository's source code by meaning using
+                      vector similarity. Results are scoped to this exact
+                      analysis run and commit SHA.{" "}
+                      <span className="text-amber-400">
+                        Note: With default test providers, embeddings are
+                        random unit vectors — results reflect plumbing only,
+                        not real semantic relevance.
+                      </span>
+                    </p>
+                  </div>
+                  <SemanticSearchPanel runId={runId} />
+                </div>
+              )}
+
+              {/* ── AI Assistant tab (S21) ── */}
+              {activeTab === "assistant" && (
+                <div className="space-y-4">
+                  <div>
+                    <h2 className="text-xl font-bold mb-1">AI Assistant</h2>
+                    <p className="text-slate-400 text-sm">
+                      Ask questions about this repository grounded strictly in
+                      retrieved source evidence. Answers include verifiable
+                      citations — each citation opens the exact file location.{" "}
+                      <span className="text-amber-400">
+                        Note: With default test providers the assistant returns
+                        deterministic placeholder text. This verifies plumbing
+                        only. Real AI answers require configuring
+                        LLM_PROVIDER=gemini or openai — see .env.example.
+                      </span>
+                    </p>
+                  </div>
+                  <RepositoryAssistantPanel
+                    runId={runId}
+                    onSelectLocation={goToFileFromCitation}
+                  />
+                </div>
               )}
             </div>
           </>
