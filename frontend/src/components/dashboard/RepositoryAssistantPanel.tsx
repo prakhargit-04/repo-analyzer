@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
-import { askRepositoryQuestion, AskResponse, CitationItem } from "@/lib/api";
+import React, { useState, useEffect } from "react";
+import { askRepositoryQuestion, AskResponse, CitationItem, getAiStatus } from "@/lib/api";
+import { getAiBadgeState, AiBadgeState } from "@/lib/ai-status-helper";
 
 interface RepositoryAssistantPanelProps {
   runId: string;
@@ -17,6 +18,13 @@ export function RepositoryAssistantPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [response, setResponse] = useState<AskResponse | null>(null);
+  const [aiState, setAiState] = useState<AiBadgeState>(() => getAiBadgeState(null));
+
+  useEffect(() => {
+    getAiStatus()
+      .then((data) => setAiState(getAiBadgeState(data)))
+      .catch(() => setAiState(getAiBadgeState(null)));
+  }, []);
 
   const handleAsk = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,6 +43,19 @@ export function RepositoryAssistantPanel({
     }
   };
 
+  const getBadgeStyle = (variant: string) => {
+    switch (variant) {
+      case "real":
+        return "bg-emerald-950 text-emerald-300 border-emerald-800";
+      case "error":
+        return "bg-red-950 text-red-300 border-red-800";
+      case "test":
+        return "bg-purple-950 text-purple-300 border-purple-800";
+      default:
+        return "bg-slate-800 text-slate-400 border-slate-700";
+    }
+  };
+
   return (
     <div className="bg-slate-900 text-slate-100 rounded-xl p-5 border border-slate-800 shadow-xl space-y-4">
       <div className="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -49,12 +70,20 @@ export function RepositoryAssistantPanel({
             Ask questions grounded strictly in retrieved source evidence with exact file citations
           </p>
         </div>
-        {response && (
-          <span className="text-xs bg-purple-950 text-purple-300 border border-purple-800 px-2.5 py-1 rounded-full font-mono">
-            Model: {response.llm_model}
-          </span>
-        )}
+        <span className={`text-xs border px-2.5 py-1 rounded-full font-mono ${getBadgeStyle(aiState.badgeVariant)}`}>
+          {aiState.badgeLabel}
+        </span>
       </div>
+
+      {aiState.showDisclaimer && (
+        <div className="bg-amber-950/40 border border-amber-800/60 text-amber-300 text-xs px-3 py-2 rounded-lg flex items-center gap-2">
+          <svg className="w-4 h-4 shrink-0 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span>Using deterministic test mode placeholders (Test Mode). Configure real providers in .env for production AI answering.</span>
+        </div>
+      )}
+
 
       <form onSubmit={handleAsk} className="flex gap-2">
         <input

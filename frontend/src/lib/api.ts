@@ -397,4 +397,27 @@ export async function askRepositoryQuestion(
   return handleResponse<AskResponse>(res);
 }
 
+export interface AiStatusResponse {
+  mode: "test" | "real" | "error";
+  embedding: {
+    provider: string;
+    model: string;
+    dimension: number;
+  };
+  llm: {
+    provider: string;
+    model: string;
+  };
+  configured: boolean;
+  message?: string;
+}
+
+export async function getAiStatus(): Promise<AiStatusResponse> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/ai/status`, {
+    cache: "no-store",
+  });
+  return handleResponse<AiStatusResponse>(res);
+}
+
+
 

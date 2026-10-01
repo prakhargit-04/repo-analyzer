@@ -1,7 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
-import { retrieveSourceChunks, RetrievalResponse, RetrievalResultItem } from "@/lib/api";
+import React, { useState, useEffect } from "react";
+
+import { retrieveSourceChunks, RetrievalResponse, RetrievalResultItem, getAiStatus } from "@/lib/api";
+import { getAiBadgeState, AiBadgeState } from "@/lib/ai-status-helper";
 
 interface SemanticSearchPanelProps {
   runId: string;
@@ -13,6 +15,13 @@ export function SemanticSearchPanel({ runId }: SemanticSearchPanelProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [response, setResponse] = useState<RetrievalResponse | null>(null);
+  const [aiState, setAiState] = useState<AiBadgeState>(() => getAiBadgeState(null));
+
+  useEffect(() => {
+    getAiStatus()
+      .then((data) => setAiState(getAiBadgeState(data)))
+      .catch(() => setAiState(getAiBadgeState(null)));
+  }, []);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,6 +40,19 @@ export function SemanticSearchPanel({ runId }: SemanticSearchPanelProps) {
     }
   };
 
+  const getBadgeStyle = (variant: string) => {
+    switch (variant) {
+      case "real":
+        return "bg-emerald-950 text-emerald-300 border-emerald-800";
+      case "error":
+        return "bg-red-950 text-red-300 border-red-800";
+      case "test":
+        return "bg-indigo-950 text-indigo-300 border-indigo-800";
+      default:
+        return "bg-slate-800 text-slate-400 border-slate-700";
+    }
+  };
+
   return (
     <div className="bg-slate-900 text-slate-100 rounded-xl p-5 border border-slate-800 shadow-xl space-y-4">
       <div className="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -42,15 +64,23 @@ export function SemanticSearchPanel({ runId }: SemanticSearchPanelProps) {
             Vector Semantic Code Search
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Query source chunks by semantic vector similarity (Session 20 Foundation)
+            Query source chunks by semantic vector similarity
           </p>
         </div>
-        {response && (
-          <span className="text-xs bg-indigo-950 text-indigo-300 border border-indigo-800 px-2.5 py-1 rounded-full font-mono">
-            Provider: {response.model_name}
-          </span>
-        )}
+        <span className={`text-xs border px-2.5 py-1 rounded-full font-mono ${getBadgeStyle(aiState.badgeVariant)}`}>
+          {aiState.badgeLabel}
+        </span>
       </div>
+
+      {aiState.showDisclaimer && (
+        <div className="bg-amber-950/40 border border-amber-800/60 text-amber-300 text-xs px-3 py-2 rounded-lg flex items-center gap-2">
+          <svg className="w-4 h-4 shrink-0 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span>Using deterministic test mode placeholders (Test Mode). Configure real providers in .env for production semantic analysis.</span>
+        </div>
+      )}
+
 
       <form onSubmit={handleSearch} className="flex gap-2">
         <input
