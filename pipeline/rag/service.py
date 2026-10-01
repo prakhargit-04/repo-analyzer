@@ -101,22 +101,8 @@ def answer_repository_question(
 
     # 5. Resolve active LLM provider & generate answer
     active_llm = llm_provider or get_llm_provider()
-    
-    try:
-        raw_answer = active_llm.generate(prompt=user_prompt, system_prompt=SYSTEM_GROUNDING_PROMPT)
-    except Exception as exc:
-        print(f"[rag service warning] LLM provider error: {exc}", file=sys.stderr)
-        return {
-            "question": clean_q,
-            "answer": "The LLM answer service encountered an error. The available repository evidence remains accessible.",
-            "repository": repo_url,
-            "commit_sha": commit_sha,
-            "run_id": run_id,
-            "citations": [],
-            "retrieved_chunks_count": len(retrieved_chunks),
-            "llm_model": active_llm.model_name,
-            "provenance": "AI_GENERATED",
-        }
+    raw_answer = active_llm.generate(prompt=user_prompt, system_prompt=SYSTEM_GROUNDING_PROMPT)
+
 
     # 6. Server-side citation validation against authoritative evidence map
     cleaned_answer, validated_citations = validate_citations(raw_answer, evidence_map)

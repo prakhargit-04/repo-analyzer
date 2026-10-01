@@ -37,6 +37,8 @@ from db.store import (
     retrieve_similar_chunks,
 )
 from rag.service import answer_repository_question
+from rag.llm import LLMError
+
 
 from worker import get_worker_queue
 from api.schemas import (
@@ -470,11 +472,73 @@ def retrieve_source_evidence_get(
 
 
 # ---------------------------------------------------------------------------
+# AI Provider Status Endpoint (S23 Item 4)
+# ---------------------------------------------------------------------------
+
+@router.get("/ai/status")
+def get_ai_status():
+    """
+    Returns active AI provider status (Session 23 Item 4).
+    Derives state from active cached provider instances. Never returns 500.
+    """
+    from embeddings import get_embedding_provider
+    from rag.llm import get_llm_provider
+
+    message = None
+    configured = True
+    emb_info = {"provider": "unknown", "model": "unknown", "dimension": 0}
+    llm_info = {"provider": "unknown", "model": "unknown"}
+
+    try:
+        emb_prov = get_embedding_provider()
+        emb_info = {
+            "provider": getattr(emb_prov, "provider_id", getattr(emb_prov, "name", "unknown")),
+            "model": getattr(emb_prov, "model_name", getattr(emb_prov, "name", "unknown")),
+            "dimension": getattr(emb_prov, "dimension", 0),
+        }
+    except Exception as exc:
+        configured = False
+        message = str(exc)
+
+    try:
+        llm_prov = get_llm_provider()
+        llm_info = {
+            "provider": getattr(llm_prov, "provider_id", getattr(llm_prov, "name", "unknown")),
+            "model": getattr(llm_prov, "model_name", "unknown"),
+        }
+    except Exception as exc:
+        configured = False
+        if not message:
+            message = str(exc)
+
+    if not configured:
+        mode = "error"
+    elif emb_info["provider"] in ("test", "test-deterministic") and llm_info["provider"] in ("test", "test-llm"):
+        mode = "test"
+    else:
+        mode = "real"
+
+    resp = {
+        "mode": mode,
+        "embedding": emb_info,
+        "llm": llm_info,
+        "configured": configured,
+    }
+    if message:
+        sanitized = message.split("\n")[0]
+        if "API_KEY" in sanitized:
+            sanitized = sanitized.split(":")[0] + ": environment variable is missing or invalid."
+        resp["message"] = sanitized
+
+    return resp
+
+
+# ---------------------------------------------------------------------------
 # RAG Evidence-Grounded Question Answering Endpoint (S21)
 # ---------------------------------------------------------------------------
 
 @router.post("/analyses/{run_id}/ask", response_model=AskResponse)
-def ask_repository_question(
+def ask_repository_question_route(
     run_id: str,
     req: AskRequest,
     db: Session = Depends(get_db_session),
@@ -483,5 +547,11 @@ def ask_repository_question(
     if not analysis:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Analysis run '{run_id}' not found")
 
-    return answer_repository_question(db, run_id=run_id, question=req.question, top_k=req.top_k)
+    try:
+        return answer_repository_question(db, run_id=run_id, question=req.question, top_k=req.top_k)
+    except LLMError as err:
+        raise HTTPException(status_code=err.status_code, detail=err.detail)
+    except (ValueError, RuntimeError) as err:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="LLM provider is not configured.")
+
 
