@@ -1,12 +1,12 @@
 """
-Embedding provider abstraction for repository code evidence chunking (Session 20).
+Embedding provider abstraction for repository code evidence chunking (Session 20 & Session 23).
 
 Provides a lightweight, interchangeable interface for embedding source chunks and search queries.
 Includes:
   - Base Abstract EmbeddingProvider interface
   - TestEmbeddingProvider: Deterministic, fast, offline vector generator for unit testing & CI.
   - SentenceTransformerProvider: Optional local embedding provider (all-MiniLM-L6-v2) if installed.
-  - get_embedding_provider: Factory helper resolving provider based on environment config.
+  - get_embedding_provider: Cached factory helper resolving provider based on environment config.
 """
 from __future__ import annotations
 
@@ -19,11 +19,24 @@ from typing import List, Optional
 
 EMBEDDING_PIPELINE_VERSION = "1"
 
+# Recognized provider name aliases — canonical name is first
+_SENTENCE_TRANSFORMER_ALIASES = frozenset({
+    "sentence_transformers",   # documented in .env.example
+    "sentence-transformers",   # hyphenated variant
+    "sentence_transformer",    # singular
+    "sentence-transformer",    # hyphenated singular
+    "minilm",
+    "all-minilm-l6-v2",
+    "all_minilm_l6_v2",
+})
+
 
 class BaseEmbeddingProvider(abc.ABC):
     """Abstract interface for embedding providers."""
 
+    provider_id: str
     name: str
+    model_name: str
     model_version: str
     dimension: int
 
@@ -47,15 +60,15 @@ class TestEmbeddingProvider(BaseEmbeddingProvider):
     __test__ = False
 
     def __init__(self, dimension: int = 64):
-
-        self.name = "test-deterministic"
+        self.provider_id = "test"
+        self.name = "test"
+        self.model_name = "sha256-deterministic"
         self.model_version = "1.0"
         self.dimension = dimension
 
     def _hash_vector(self, text: str) -> List[float]:
         """Convert string text into a deterministic, unit-normalized vector of size self.dimension."""
         vec = []
-        # Generate enough bytes from hashing iterations
         seed = text.encode("utf-8")
         iteration = 0
         while len(vec) < self.dimension:
@@ -64,12 +77,10 @@ class TestEmbeddingProvider(BaseEmbeddingProvider):
             for i in range(0, len(digest), 4):
                 if len(vec) >= self.dimension:
                     break
-                # Convert 4 bytes into float in [-1.0, 1.0]
                 val = int.from_bytes(digest[i:i+4], byteorder="big", signed=True) / (2**31 - 1)
                 vec.append(val)
             iteration += 1
 
-        # Normalize vector to unit length
         norm = math.sqrt(sum(x * x for x in vec))
         if norm == 0:
             return [1.0 / math.sqrt(self.dimension)] * self.dimension
@@ -85,100 +96,104 @@ class TestEmbeddingProvider(BaseEmbeddingProvider):
 class SentenceTransformerProvider(BaseEmbeddingProvider):
     """
     SentenceTransformers local model provider (e.g. all-MiniLM-L6-v2).
-    Falls back gracefully to TestEmbeddingProvider if sentence-transformers is not installed.
-    Configured via EMBEDDING_MODEL_NAME env var (default: all-MiniLM-L6-v2).
+    Fails fast if sentence-transformers is not installed or model cannot be loaded.
     """
 
     def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
-        # Allow env override at construction time
         resolved_model = os.environ.get("EMBEDDING_MODEL_NAME", model_name)
-        self.name = resolved_model
+        self.provider_id = "sentence_transformers"
+        self.name = "sentence_transformers"
+        self.model_name = resolved_model
         self.model_version = "1.0"
-        self._available = False
+
         try:
             from sentence_transformers import SentenceTransformer
+        except ImportError as exc:
+            raise ValueError(
+                "Package 'sentence-transformers' is not installed. "
+                "Install it with: pip install sentence-transformers"
+            ) from exc
+
+        try:
             self._model = SentenceTransformer(resolved_model)
             self.dimension = self._model.get_sentence_embedding_dimension() or 384
-            self._available = True
-        except ImportError:
-            print(
-                f"[embeddings warning] 'sentence-transformers' package not installed. "
-                f"Install it with: pip install sentence-transformers",
-                file=sys.stderr,
-            )
-            self._init_fallback(resolved_model)
         except Exception as exc:
-            print(f"[embeddings warning] Could not load SentenceTransformer '{resolved_model}': {exc}", file=sys.stderr)
-            self._init_fallback(resolved_model)
-
-    def _init_fallback(self, original_model_name: str) -> None:
-        """Initialize as fallback TestEmbeddingProvider when the real model is unavailable."""
-        fallback = TestEmbeddingProvider()
-        self.name = fallback.name
-        self.model_version = fallback.model_version
-        self.dimension = fallback.dimension
-        self._model = None
-
-    @property
-    def is_available(self) -> bool:
-        """Returns True if the real sentence-transformers model loaded successfully."""
-        return self._available
+            raise RuntimeError(
+                f"Failed to load SentenceTransformer model '{resolved_model}': {exc}"
+            ) from exc
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        if self._model is None:
-            return TestEmbeddingProvider(self.dimension).embed_documents(texts)
         embeddings = self._model.encode(texts, convert_to_numpy=True, normalize_embeddings=True)
         return embeddings.tolist()
 
     def embed_query(self, text: str) -> List[float]:
-        if self._model is None:
-            return TestEmbeddingProvider(self.dimension).embed_query(text)
         embedding = self._model.encode(text, convert_to_numpy=True, normalize_embeddings=True)
         return embedding.tolist()
 
 
-# Recognized provider name aliases — canonical name is first in each group
-_SENTENCE_TRANSFORMER_ALIASES = frozenset({
-    "sentence_transformers",   # documented in .env.example
-    "sentence-transformers",   # hyphenated variant
-    "sentence_transformer",    # singular
-    "sentence-transformer",    # hyphenated singular
-    "minilm",
-    "all-minilm-l6-v2",
-    "all_minilm_l6_v2",
-})
+_CACHED_EMBEDDING_PROVIDER: Optional[BaseEmbeddingProvider] = None
+_CACHED_EMBEDDING_KEY: Optional[tuple] = None
 
 
-def get_embedding_provider(provider_name: Optional[str] = None) -> BaseEmbeddingProvider:
+def reset_embedding_provider_cache() -> None:
+    """Clear the cached embedding provider instance."""
+    global _CACHED_EMBEDDING_PROVIDER, _CACHED_EMBEDDING_KEY
+    _CACHED_EMBEDDING_PROVIDER = None
+    _CACHED_EMBEDDING_KEY = None
+
+
+def get_embedding_provider(
+    provider_name: Optional[str] = None,
+    force_reload: bool = False,
+) -> BaseEmbeddingProvider:
     """
-    Factory function to retrieve embedding provider instance.
+    Factory function to retrieve cached embedding provider instance.
     Checks environment variable EMBEDDING_PROVIDER if not passed explicitly.
-    In testing environment (PYTEST_CURRENT_TEST set), defaults to TestEmbeddingProvider.
+    Default (unconfigured) provider is TestEmbeddingProvider.
 
     Recognized EMBEDDING_PROVIDER values:
       - "test" / "deterministic" / "mock"  → TestEmbeddingProvider (offline, CI-safe)
       - "sentence_transformers" (or variants) → SentenceTransformerProvider (local model)
+
+    Raises ValueError / RuntimeError if explicitly requested real provider is unavailable or invalid.
     """
-    if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("TESTING"):
-        return TestEmbeddingProvider()
+    global _CACHED_EMBEDDING_PROVIDER, _CACHED_EMBEDDING_KEY
 
-    p_name = provider_name or os.environ.get("EMBEDDING_PROVIDER", "test")
-    p_name_lower = p_name.strip().lower()
+    p_name = provider_name or os.environ.get("EMBEDDING_PROVIDER")
+    if not p_name:
+        p_name = "test"
 
-    if p_name_lower in ("test", "deterministic", "mock"):
-        return TestEmbeddingProvider()
-    elif p_name_lower in _SENTENCE_TRANSFORMER_ALIASES:
-        model_name = os.environ.get("EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2")
-        return SentenceTransformerProvider(model_name)
+    p_name_clean = p_name.strip().lower()
+    model_name = os.environ.get("EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2") if p_name_clean in _SENTENCE_TRANSFORMER_ALIASES else "sha256-deterministic"
+    cache_key = (p_name_clean, model_name)
 
-    # Default fallback for unknown/unconfigured provider — safe for offline/test use
-    print(
-        f"[embeddings warning] Unknown EMBEDDING_PROVIDER '{p_name}'. "
-        f"Falling back to TestEmbeddingProvider. "
-        f"Valid options: test, sentence_transformers.",
-        file=sys.stderr,
-    )
-    return TestEmbeddingProvider()
+    if not force_reload and _CACHED_EMBEDDING_PROVIDER is not None and _CACHED_EMBEDDING_KEY == cache_key:
+        return _CACHED_EMBEDDING_PROVIDER
+
+    if p_name_clean in ("test", "deterministic", "mock"):
+        instance = TestEmbeddingProvider()
+    elif p_name_clean in _SENTENCE_TRANSFORMER_ALIASES:
+        instance = SentenceTransformerProvider(model_name)
+    else:
+        raise ValueError(
+            f"Unknown EMBEDDING_PROVIDER '{p_name}'. "
+            f"Valid options: 'test', 'sentence_transformers'."
+        )
+
+    _CACHED_EMBEDDING_PROVIDER = instance
+    _CACHED_EMBEDDING_KEY = cache_key
+    return instance
+
+
+def get_embedding_version(provider: BaseEmbeddingProvider) -> str:
+    """
+    Returns conceptual provider:model:dimension version identifier.
+    Guarantees different provider, model, or dimension produces different string version.
+    """
+    p_id = getattr(provider, "provider_id", getattr(provider, "name", "unknown"))
+    m_name = getattr(provider, "model_name", getattr(provider, "name", "unknown"))
+    dim = getattr(provider, "dimension", 0)
+    return f"{p_id}:{m_name}:{dim}"
 
 
 def format_chunk_for_embedding(chunk: dict) -> str:

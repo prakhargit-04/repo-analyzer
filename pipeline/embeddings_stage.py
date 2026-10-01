@@ -5,7 +5,9 @@ Orchestrates batching, structured formatting, provider execution, and error safe
 """
 from __future__ import annotations
 
+import os
 import sys
+
 from typing import Any, Dict, List, Optional, Tuple
 
 from embeddings import (
@@ -47,7 +49,19 @@ def generate_source_embeddings(
             "dimension": 0,
         }
 
-    active_provider = provider or get_embedding_provider()
+    try:
+        active_provider = provider or get_embedding_provider()
+    except Exception as exc:
+        print(f"[embeddings stage warning] Embedding provider initialization failed: {exc}", file=sys.stderr)
+        return [], {
+            "status": "failed",
+            "error": str(exc),
+            "total_embeddings": 0,
+            "provider_name": os.environ.get("EMBEDDING_PROVIDER", "unknown"),
+
+            "model_version": "unknown",
+            "dimension": 0,
+        }
 
     formatted_texts: List[str] = []
     chunk_meta_list: List[Dict[str, Any]] = []
@@ -71,8 +85,9 @@ def generate_source_embeddings(
             "total_embeddings": 0,
             "provider_name": active_provider.name,
             "model_version": active_provider.model_version,
-            "dimension": active_provider.dimension,
+            "dimension": getattr(active_provider, "dimension", 0),
         }
+
 
     embeddings_result: List[Dict[str, Any]] = []
     for sc, vec in zip(chunk_meta_list, vectors):
