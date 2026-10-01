@@ -15,7 +15,9 @@ Design principles:
      "pending" | "complete" | "partial" | "failed".
   5. All version strings (schema_version, analyzer_version, cache_schema_version)
      are stored on analysis_runs for full provenance.
-  6. pgvector / embeddings: NOT in this schema (S14 scope excludes them).
+  6. SourceChunk (S19) and SourceEmbedding (S20) are linked to analysis_runs.
+     Vector retrieval is a linear cosine-similarity scan over JSON-serialised
+     vectors (no pgvector / ANN index). Run-scoped to enforce repo+SHA isolation.
 
 Index strategy:
   - Single-column indexes: declared with mapped_column(index=True) only.
@@ -33,7 +35,9 @@ Table hierarchy:
                 ├── graph_nodes
                 ├── graph_edges
                 ├── findings
-                └── health_scores
+                ├── health_scores
+                ├── source_chunks  (S19: deterministic line-range evidence chunks)
+                └── source_embeddings  (S20: vector embeddings keyed by chunk+model)
 """
 from __future__ import annotations
 import uuid

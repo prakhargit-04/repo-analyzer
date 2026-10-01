@@ -1,222 +1,183 @@
--- GitHub Project Analyzer — Tier 1 Pipeline (Python-only MVP)
+# GitHub Repository Analyzer — Multi-Language Intelligence Pipeline
 
-This is a real, tested implementation of the pipeline described in
-`10. System Architecture (Summary)` of the project plan, scoped to Python
-only per the "fully support one language" recommendation. It has been run
-end-to-end against a real GitHub repository (pallets/itsdangerous), not
-just against synthetic examples.
+A real, tested implementation of a full repository analysis pipeline with
+evidence-grounded AI question-answering, semantic search, and a Next.js
+analysis dashboard. Validated end-to-end against real GitHub repositories.
 
-## What's implemented and verified
+---
 
-| Stage | File | Tool(s) | Status |
-|---|---|---|---|
-| Clone/checkout | `pipeline/clone.py` | `git` subprocess | Verified against a real GitHub URL |
-| Structural parse | `pipeline/parse_python.py` | tree-sitter | Verified: functions, classes, imports, line ranges |
-| Static analysis | `pipeline/static_analysis.py` | radon, bandit | Verified, see calibration note below |
-| Knowledge graph | `pipeline/graph_builder.py` | networkx | Verified: 2-layer graph with confidence-tagged call edges |
-| Health score | `pipeline/health_score.py` | — | Formula fully specified, see below |
-| Caching | `pipeline/main.py` | filesystem, keyed by content-hash + analyzer version | Verified: second run on same content hits cache; a version bump invalidates it |
+## Current Pipeline
 
-**Not yet wired (documented, not silently dropped):**
-- `lizard` is installed but not yet called from `static_analysis.py` — add as a cross-check against radon's complexity numbers.
-- `semgrep` — heavier, rule-config-dependent; add once this core is stable.
-- `gitleaks` — Go binary, not pip-installable; needs a separate step in the real deployment container, not this dev sandbox.
-- `OSV.dev` — needs an outbound API call; wire it in the deployed environment.
-- Java / JS/TS parsing — add a `parse_java.py` / `parse_js.py` alongside `parse_python.py` once this is solid; `graph_builder.py` is already language-agnostic (it consumes generic FunctionNode/ClassNode/ImportEdge objects).
-
-## Real bugs this caught (worth keeping in your project report — this IS your evaluation methodology working)
-
-1. **Bandit noise from test asserts.** First run gave a security sub-score
-   of 0 — 57/68 bandit findings were `assert` statements inside the test
-   suite (`B101`), not vulnerabilities. Fixed by giving complexity,
-   maintainability, and security **one shared** test-exclusion definition
-   (`util.is_test_file`) instead of three independent ones that drifted
-   out of sync (an earlier fix excluded tests from bandit but forgot
-   complexity/maintainability were still including them — a reviewer
-   caught this).
-2. **The test-exclusion rule itself was incomplete.** Validating on
-   `pytest-dev/iniconfig` showed its test directory is named `testing/`
-   (not `test/`/`tests/`) and its `conftest.py` doesn't match `test_*`
-   naming — both slipped through undetected until run against a second
-   real repo. Fixed, and the sub-score changed (82.8 → 79.4) as a direct,
-   visible result.
-3. **Local-path caching was silently unsound.** The cache key for
-   `--local-path` used to be a hardcoded placeholder, meaning edits to a
-   local checkout would never invalidate the cache. Fixed: local paths are
-   now content-hashed (file paths + sizes + mtimes), not just keyed off git
-   HEAD — because HEAD doesn't reflect uncommitted working-tree changes.
-4. **Tool failure could look like a clean repository.** If bandit crashed,
-   timed out, or returned bad output, the old code returned `[]` → security
-   sub-score of 100 (a broken analysis looking spotless). Every stage now
-   reports `success`/`partial`/`failed`, and the health score marks itself
-   `"status": "partial"` with the failed component set to `null` and
-   weights renormalized across what's actually available — verified by
-   deliberately breaking bandit and confirming the score does NOT come
-   back as a fake 100.
-5. **Call-confidence labels were overclaiming.** A same-file function-name
-   match was labeled `"certain"`, but the resolver never checks for import
-   shadowing or real Python scope — it's a name-matching heuristic, not
-   verified resolution. Relabeled to `"high_confidence"` / `"low_confidence"`
-   (structural containment/import edges keep `"structural_certain"`, since
-   those genuinely are direct AST facts), and same-file matches that also
-   collide with a same-file import name are now downgraded to `"flagged"`
-   rather than silently picked.
-6. **Provenance claimed exact tool versions but didn't capture them.**
-   Fixed — `radon:6.0.1:cc_visit`, `bandit:<version>` are now real,
-   captured via `radon.__version__` / `importlib.metadata`, not asserted.
-
-Validated end-to-end on three structurally different real repos
-(`pallets/itsdangerous`, `benjaminp/six`, `pytest-dev/iniconfig`) — sample
-outputs for all three are included alongside this code.
-
-### Round 2 review — 4 more real bugs, now all covered by regression tests
-
-A second review pass (after the fixes above) found four more real bugs.
-All four are fixed and each now has a permanent regression test in
-`tests/test_regression.py` so none of them can silently reappear:
-
-7. **`weights_used` reported raw weights, not renormalized ones.** When a
-   sub-score was missing and weights were renormalized to sum to 1.0 for
-   the actual composite calculation, the reported `weights_used` field
-   still echoed the raw, un-renormalized `WEIGHTS` constant — a
-   documentation-vs-reality mismatch in the output itself. Fixed:
-   `weights_used` now reports `WEIGHTS[k] / weight_sum`, which always sums
-   to 1.0. Caught by writing the regression suite, which is exactly why
-   the suite exists.
-8. **Duplicate same-file function names silently collided.** Call
-   resolution built its same-file candidate set as
-   `{f.name: f.id for f in ...}` — a plain dict, so two functions sharing a
-   name in one file meant the second silently overwrote the first, and a
-   call to that name was confidently labeled `high_confidence` pointing at
-   whichever definition happened to survive. Fixed: candidates are now
-   collected as a list per (file, name); two-or-more matches are flagged
-   as `duplicate_same_file_candidates` instead of guessed.
-9. **Bandit non-zero-but-not-crash exit codes weren't distinguished from
-   real crashes** in earlier drafts — confirmed fixed and covered: a
-   missing bandit executable, a timeout, and unparsable JSON stdout all
-   correctly produce `status: "failed"`, never a false-clean `[]`.
-10. **Documentation drift** — the confidence-label names and cache-key
-    description in this README had fallen out of sync with the actual
-    code (`certain`/`heuristic` vs. the real `structural_certain` /
-    `high_confidence` / `low_confidence` / `flagged`, and a stale
-    `<repo>@<commit-sha>` cache-key description that predated snapshot
-    hashing). Fixed above.
-
-### Round 3 review — 3 more real bugs, now all covered by regression tests
-
-A third review pass found three more real bugs, all now fixed with
-permanent regression tests:
-
-11. **Local-path snapshot hashing wasn't actually a content hash.** It
-    hashed relative-path + file-size + mtime, not the file's actual bytes.
-    Two different edits that happen to preserve file size, or that land
-    within the same filesystem mtime resolution window, could fail to
-    invalidate the cache — this is not a content hash, it's a metadata
-    hash that usually correlates with content changing. Fixed:
-    `resolve_snapshot_id` now streams and hashes the real bytes of every
-    included file. `test_content_hash_ignores_size_and_mtime_collisions`
-    pins the file's original mtime back after a same-size edit specifically
-    to prove the old implementation would have missed it.
-12. **The cache key didn't account for the analyzer's own version.** A
-    cached result would be served forever for unchanged repo content, even
-    across a bugfix to this codebase's scoring formula, parser, or
-    resolution logic — silently serving a pre-fix (wrong) result as if it
-    were current. Fixed: `build_cache_key()` folds `CACHE_SCHEMA_VERSION`
-    and `ANALYZER_VERSION` into the actual cache key alongside the content
-    snapshot, so bumping `ANALYZER_VERSION` (done here, to `0.2.0`) forces
-    every existing cache entry to be recomputed.
-13. **Bandit's exit code was never checked.** The subprocess call only
-    handled `TimeoutExpired`/`FileNotFoundError`; any other non-zero exit
-    (bandit's internal-error code, a killed process) fell through and
-    whatever happened to be in `stdout` got parsed as if the scan had
-    completed cleanly. Fixed: only exit codes `0` (clean) and `1` (issues
-    found) — bandit's own documented contract for a completed scan — are
-    accepted; anything else is `status: "failed"`.
-14. **A `"partial"` component status didn't actually make the overall
-    result `"partial"` if it still produced a number.** `_complexity_subscore`
-    etc. return a real score for `status: "partial"` (computed from
-    whatever results came back before the partial failure) — but the old
-    `compute_health_score` derived `"complete"` vs `"partial"` purely from
-    whether every sub-score was non-`None`. A partial-but-numeric result
-    was therefore reported as a full, trustworthy `"complete"` analysis.
-    Fixed: overall status is now derived from the actual component
-    statuses (`"complete"` iff every component is `"success"`), reported
-    alongside the scores as a new `component_statuses` field so a partial
-    component's presence is visible even when it still contributed a
-    number. `test_partial_component_can_contribute_score_but_not_complete_status`
-    is the test that pins this down.
-
-## Regression tests
-
-```bash
-pip install pytest
-python -m pytest tests/ -v
+```
+GitHub repository URL
+  ↓ Clone (git, HTTPS-only, exact SHA)
+  ↓ Multi-language parsing (Python, Java, JS/TS — tree-sitter)
+  ↓ Static analysis (radon CC/MI, bandit, semgrep, gitleaks, lizard)
+  ↓ Knowledge graph construction (networkx — nodes, edges, call resolution)
+  ↓ Health score (weighted composite: complexity, maintainability, security)
+  ↓ Source chunking (deterministic line-range chunks + SHA provenance)
+  ↓ Embedding generation (test: random unit vectors; real: configurable)
+  ↓ Vector storage (JSON-serialised, run-scoped, linear cosine scan)
+  ↓ Grounded RAG (retrieval → prompt → LLM → server-side citation validation)
+  ↓ FastAPI + async worker + SQLite/PostgreSQL persistence
+  ↓ Next.js dashboard (Overview, Findings, Files, Semantic Search, AI Assistant)
 ```
 
-35 tests, one (or a parametrized group) per real bug found across all three
-review rounds, plus a small number of complementary sanity checks so a
-test can't trivially always pass (e.g. confirming `status: "complete"`
-really is reachable, not just `"partial"`, and that an unknown component
-status raises rather than being silently treated as some default). Do not
-add a new tool or feature until these pass — that's the whole point of
-writing them before moving on to `lizard`.
+## What's Implemented
 
-## The deterministic-vs-AI boundary, concretely
+| Session | Feature | Status |
+|---|---|---|
+| S1–S13 | Python parsing, static analysis, knowledge graph, health score, caching | ✅ Complete |
+| S14 | SQLite/PostgreSQL persistence (SQLAlchemy + Alembic) | ✅ Complete |
+| S15 | FastAPI + async worker + job queue | ✅ Complete |
+| S16 | Next.js dashboard (Overview, graph, findings) | ✅ Complete |
+| S17–S18 | Analysis dashboard, files, evidence drilldown, end-to-end stabilization | ✅ Complete |
+| S19 | Source content ingestion, deterministic evidence chunks, SourceChunk persistence | ✅ Complete |
+| S20 | Embedding generation (with versioning), vector storage, repository-scoped retrieval | ✅ Complete |
+| S21 | Evidence-grounded RAG pipeline: retrieval → grounded LLM → citation validation | ✅ Complete |
+| S22 | Repo hygiene, docs, CORS security, GitHub-HTTPS-only URL validation, panel mounting | ✅ Complete |
 
-Every node/edge in the graph carries a `provenance` field naming the exact
-tool or heuristic that produced it. Structural edges (containment, imports)
-carry `confidence: structural_certain` — direct AST facts, no inference.
-Call edges carry `high_confidence` / `low_confidence` / `flagged` (see the
-docstring in `graph_builder.py` for the exact resolution rules — this is a
-name-matching heuristic, not real Python scope resolution, and is labeled
-accordingly rather than overclaiming "certain"). Nothing here is an LLM
-guess — the LLM layer (not yet built) would only ever narrate over this
-already-computed, already-labeled graph, and every claim it makes must
-trace back to one of these node/edge IDs.
+## Known Limitations
 
-## Running it
+- **Vector search is a linear scan** — embeddings are stored as JSON in SQLite and compared with cosine similarity in Python. No pgvector, no ANN index. Performance degrades with large repositories. (S23+ scope)
+- **Call resolution is heuristic** — same-file function-name matching, not full Python scope resolution. Labeled `high_confidence`/`low_confidence`/`flagged` (never `certain`).
+- **Test mode answers are placeholders** — with default providers (`LLM_PROVIDER=test`), AI answers are deterministic fixed strings. Real AI requires configuring a provider (see [Test Mode vs Real Mode](#test-mode-vs-real-mode)).
+- **API accepts GitHub HTTPS repos only** — local paths, SSH URLs, non-GitHub hosts, and HTTP are rejected at the API layer. The CLI (`pipeline/main.py`) still accepts local paths.
+- **Not production-ready** — no authentication, no rate limiting, no multi-tenant isolation, no horizontal scaling.
+
+---
+
+## Quick Start
+
+### Backend
 
 ```bash
 pip install -r requirements.txt
-python pipeline/main.py --repo-url https://github.com/owner/repo
+
+# Optional: create .env from template
+cp .env.example .env
+
+# Run migrations (creates DB automatically)
+alembic upgrade head
+
+# Start API server
+uvicorn pipeline.api.app:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000), submit a GitHub repository URL, and explore the dashboard.
+
+### CLI (local-path mode, for development)
+
+```bash
+python pipeline/main.py --repo-url https://github.com/pytest-dev/iniconfig
 # or
 python pipeline/main.py --local-path /path/to/already/cloned/repo
 ```
 
-Output is a single JSON document: static analysis results, knowledge graph
-summary (including the confidence breakdown), and the health score with
-its full formula, sub-scores, and `component_statuses`.
+---
 
-**Analysis status contract** — every stage (`complexity`, `maintainability`,
-`security`) reports one of:
+## Test Mode vs Real Mode
 
-| Status | Meaning |
-|---|---|
-| `success` | Tool completed and output is complete |
-| `partial` | Some analysis/output is incomplete (score may still be computed from what's available) |
-| `failed` | Tool result unavailable; no clean result is inferred |
+### TEST MODE (default — offline, deterministic, CI-safe)
 
-The overall `health_score.status` is `"complete"` **only if every component
-is `"success"`** — a `"partial"` component can still contribute a real
-number to the composite, but that does not make the overall result
-`"complete"`. `"failed"` means no component produced anything usable.
-`"partial"` covers everything else.
+Default when no provider env vars are set:
 
-**Caching** — cached under `.cache/`, keyed by `<repo>@<versioned-key>`,
-where `versioned-key = sha256(CACHE_SCHEMA_VERSION + ANALYZER_VERSION +
-snapshot_id)`. A fresh clone's `snapshot_id` is its git SHA (trusted, since
-nothing can have modified the checkout since cloning); a `--local-path`
-`snapshot_id` is a real byte-level SHA-256 of every included file's
-relative path and content (git HEAD alone is not trusted for local paths,
-since a dirty working tree changes actual content without changing HEAD —
-and path+size+mtime is not a content hash, since a same-size edit or an
-mtime collision could go undetected). Folding `ANALYZER_VERSION` into the
-key means a bugfix to this codebase invalidates old cache entries even
-when the analyzed repository's content hasn't changed at all.
+```bash
+LLM_PROVIDER=test        # Fixed placeholder answers, no API calls
+EMBEDDING_PROVIDER=test  # Random unit vectors, no model download
+```
 
-## Next concrete steps (in order)
+In test mode:
+- The AI Assistant returns a fixed placeholder answer referencing evidence chunks.
+- Semantic Search returns chunks ranked by random similarity scores.
+- All tests pass offline without any API keys.
+- This verifies **plumbing only** (endpoint wiring, citation resolution, DB round-trips).
 
-1. ~~Write regression tests for every bug found~~ — done (`tests/test_regression.py`, 35 passing across 3 review rounds).
-2. Run against 5–10 more real repos of varying size/quality; each new repo is a chance to find another `iniconfig`-style edge case in the test-exclusion rule before it's load-bearing for a score someone trusts.
-3. Wire `lizard` into `static_analysis.py` as a cross-check on radon's complexity numbers (flag functions where the two tools disagree sharply).
-4. Only then: start the pgvector embedding + evidence-linked chat layer — second major build, not built in parallel with Tier 1 hardening.
+### REAL MODE (requires network + API keys)
+
+To use real AI features, set env vars (copy `.env.example` → `.env`):
+
+```bash
+# Option A: Google Gemini
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=your_key_here
+
+# Option B: OpenAI
+LLM_PROVIDER=openai
+OPENAI_API_KEY=your_key_here
+
+# Real embedding model (sentence-transformers, runs locally)
+EMBEDDING_PROVIDER=sentence_transformers
+EMBEDDING_MODEL_NAME=all-MiniLM-L6-v2
+```
+
+> **Note:** Real provider integration (installing provider packages, wiring them to the LLM/embedding abstraction) is Session 23. The current code ships the provider abstraction (`pipeline/rag/llm.py`) and test provider only.
+
+---
+
+## Running Tests
+
+```bash
+# Backend (217 tests)
+pip install -r requirements.txt
+python -m pytest tests/ -v
+
+# Frontend (40 tests)
+cd frontend
+npm test
+```
+
+**Required tools for full static analysis (optional for unit tests):**
+- `semgrep` — installed via pip (included in requirements.txt)
+- `gitleaks` — separate Go binary; if absent, gitleaks analyzer reports `status: "unavailable"` (not `failed`)
+- `bandit` — installed via pip (included in requirements.txt)
+
+---
+
+## Security Notes (S22)
+
+- **CORS**: No wildcard (`*`) — origins are env-configurable via `CORS_ALLOWED_ORIGINS`. Default: `http://localhost:3000` (dev only). Production must set this explicitly.
+- **URL validation**: The API submission endpoint (`POST /api/v1/analyses`) enforces GitHub-HTTPS-only URLs. Rejected: `http://`, `git@`, `file://`, local paths, localhost/private IPs, userinfo tricks, non-default ports, extra path segments, query strings, fragments, option-injection prefixes (`-`).
+- **No secrets committed** — `.env` is gitignored. Use `.env.example` as the template.
+- **Error responses** do not leak internal paths or stack traces (global exception handler in `app.py`).
+
+---
+
+## Architecture: Deterministic vs AI Boundary
+
+Every knowledge graph node/edge carries a `provenance` field naming the exact
+tool or heuristic that produced it:
+
+- Structural edges (containment, imports): `confidence: structural_certain` — direct AST facts
+- Call edges: `high_confidence` / `low_confidence` / `flagged` — name-matching heuristic, not scope resolution
+- Finding nodes: bandit/semgrep/gitleaks provenance with exact tool version
+- RAG answers: every claim traces back to a cited `SourceChunk` with exact file + line range + commit SHA. Server-side citation validator strips any LLM citation not backed by a retrieved chunk.
+
+---
+
+## Real Bugs This Pipeline Found (Methodology Validation)
+
+1. Bandit noise from test asserts (B101) — fixed by shared `is_test_file` filter
+2. Test exclusion rule incomplete (`testing/`, `conftest.py` not matched) — found on `iniconfig`
+3. Local-path caching was silently unsound (placeholder cache key) — fixed with real content hash
+4. Tool failure could produce fake 100 security score — now reports `status: "failed"`
+5. Call-confidence labels overclaiming `"certain"` — relabeled to `"high_confidence"` etc.
+6. Provenance captured fake versions — now real `radon.__version__` / `importlib.metadata`
+7. `weights_used` reported un-renormalized weights — fixed
+8. Duplicate same-file function names silently colliding in call resolution — fixed
+9. Bandit non-zero-but-not-crash exit codes not distinguished — fixed
+10. Documentation drift in confidence-label names — fixed
+11. Local-path snapshot hashing was metadata-hash, not content-hash — fixed
+12. Cache key didn't include analyzer version — fixed with `CACHE_SCHEMA_VERSION` + `ANALYZER_VERSION`
+13. Bandit exit code never checked — fixed, only codes 0/1 accepted
+14. `"partial"` component with a number was reported as `"complete"` overall — fixed
+
+All 14 bugs have permanent regression tests in `tests/test_regression.py`.
