@@ -518,8 +518,14 @@ def retrieve_similar_chunks(
     scored_results = []
     for se, sc in rows:
         vec = _uj(se.vector_json) or []
+        if len(vec) != len(query_vector):
+            raise ValueError(
+                f"Incompatible embedding vector dimensions: query vector is {len(query_vector)}d, "
+                f"but stored vector for chunk '{sc.chunk_id}' is {len(vec)}d ({se.model_name})."
+            )
         score = _cosine_sim(query_vector, vec)
         scored_results.append((score, sc, se))
+
 
     scored_results.sort(key=lambda x: x[0], reverse=True)
     top_results = scored_results[:top_k]
