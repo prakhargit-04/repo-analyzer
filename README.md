@@ -100,8 +100,8 @@ EMBEDDING_PROVIDER=test  # Deterministic hash-derived vectors, no model download
 
 In test mode:
 - The AI Assistant returns a fixed placeholder answer referencing evidence chunks.
-- Semantic Search returns chunks ranked by random similarity scores.
-- All tests pass offline without any API keys.
+- Semantic Search returns chunks ranked by deterministic similarity scores in test mode; these vectors are not semantic embeddings.
+- No API keys are needed; a few tests clone from GitHub and need network access.
 - This verifies **plumbing only** (endpoint wiring, citation resolution, DB round-trips).
 
 ### REAL MODE (requires network + API keys)
@@ -129,13 +129,12 @@ EMBEDDING_MODEL_NAME=all-MiniLM-L6-v2
 ## Running Tests
 
 ```bash
-# Backend (251 tests)
+# Backend
 pip install -r requirements.txt
 python -m pytest tests/ -v
 
-# Frontend (40 tests)
-cd frontend
-npm test
+# Frontend
+npm --prefix frontend test
 ```
 
 **Required tools for full static analysis (optional for unit tests):**

@@ -1,6 +1,6 @@
 export interface AiBadgeState {
   badgeLabel: string;
-  badgeVariant: "test" | "real" | "error" | "unknown";
+  badgeVariant: "test" | "real" | "mixed" | "error" | "unknown";
   showDisclaimer: boolean;
 }
 
@@ -40,6 +40,19 @@ export function getAiBadgeState(
       badgeLabel: `AI Mode: Real (${prov}/${model})`,
       badgeVariant: "real",
       showDisclaimer: false,
+    };
+  }
+
+  if (data.mode === "mixed") {
+    const embProv = data.embedding?.provider || "test";
+    const llmProv = data.llm?.provider || "test";
+    // Disclaimer is visible whenever embeddings are test (non-semantic)
+    const _TEST_EMBEDDING_IDS = new Set(["test", "test-deterministic"]);
+    const showDisclaimer = _TEST_EMBEDDING_IDS.has(embProv);
+    return {
+      badgeLabel: `AI Mode: Mixed (embeddings: ${embProv}, LLM: ${llmProv})`,
+      badgeVariant: "mixed",
+      showDisclaimer,
     };
   }
 

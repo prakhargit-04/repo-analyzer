@@ -50,3 +50,4 @@ frontend/.next/
 .env.production
 
 audit/
+eval/results/

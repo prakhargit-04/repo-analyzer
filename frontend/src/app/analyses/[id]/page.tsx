@@ -430,8 +430,8 @@ function AnalysisDashboard({ id }: { id: string }) {
                       analysis run and commit SHA.{" "}
                       <span className="text-amber-400">
                         Note: With default test providers, embeddings are
-                        random unit vectors — results reflect plumbing only,
-                        not real semantic relevance.
+                        deterministic hash-derived vectors (not semantic) —
+                        results reflect plumbing only, not real semantic relevance.
                       </span>
                     </p>
                   </div>

@@ -514,12 +514,20 @@ def get_ai_status():
         if not message:
             message = str(exc)
 
+    _TEST_EMBEDDING_IDS = frozenset({"test", "test-deterministic"})
+    _TEST_LLM_IDS = frozenset({"test", "test-llm"})
+    emb_is_test = emb_info["provider"] in _TEST_EMBEDDING_IDS
+    llm_is_test = llm_info["provider"] in _TEST_LLM_IDS
+
     if not configured:
         mode = "error"
-    elif emb_info["provider"] in ("test", "test-deterministic") and llm_info["provider"] in ("test", "test-llm"):
+    elif emb_is_test and llm_is_test:
         mode = "test"
-    else:
+    elif not emb_is_test and not llm_is_test:
         mode = "real"
+    else:
+        # Exactly one side is a test provider — mixed configuration
+        mode = "mixed"
 
     resp = {
         "mode": mode,
