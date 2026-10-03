@@ -178,59 +178,57 @@ def test_ai_status_endpoint_error_mode():
 
 
 def test_ai_status_endpoint_mixed_mode_test_emb_real_llm():
-    """GET /api/v1/ai/status returns mode=mixed when embedding=test but LLM=real-ish name."""
-    os.environ["EMBEDDING_PROVIDER"] = "test"
-    # Use an LLM name that is NOT in the test set (simulate a real name without needing a key)
-    # We patch the LLM provider factory to return a fake provider with a non-test provider_id
+    """GET /api/v1/ai/status returns mode=mixed: test embedding + real (non-test) LLM.
+    Patches get_llm_provider at the module where it is looked up inside get_ai_status.
+    """
     from unittest.mock import patch, MagicMock
+
+    os.environ["EMBEDDING_PROVIDER"] = "test"
+    reset_embedding_provider_cache()
 
     fake_llm = MagicMock()
     fake_llm.provider_id = "openai"
     fake_llm.model_name = "gpt-4o-mini"
 
-    with patch("api.routes.get_llm_provider", return_value=fake_llm) if False else patch(
-        "embeddings.get_embedding_provider",
-        side_effect=lambda: __import__("pipeline.embeddings", fromlist=["get_embedding_provider"]).get_embedding_provider() if False else None,
-    ):
-        # Simpler: directly verify the mode logic by checking both real providers return mixed
-        pass
+    # get_ai_status does:  from rag.llm import get_llm_provider
+    # so we patch at the import source to intercept the local lookup.
+    with patch("rag.llm.get_llm_provider", return_value=fake_llm):
+        client = TestClient(app)
+        res = client.get("/api/v1/ai/status")
 
-    # Verify via the actual endpoint that test+test = "test" (baseline unchanged)
-    os.environ["EMBEDDING_PROVIDER"] = "test"
-    os.environ["LLM_PROVIDER"] = "test"
-    client = TestClient(app)
-    res = client.get("/api/v1/ai/status")
+    assert res.status_code == 200
     data = res.json()
-    assert data["mode"] == "test"
-    # Both-test baseline passes — mixed mode logic is unit-tested in test_s23_real_providers_mixed_mode_logic
+    assert data["mode"] == "mixed", f"Expected mode=mixed, got {data['mode']}"
+    assert data["embedding"]["provider"] == "test"
+    assert data["llm"]["provider"] == "openai"
+    assert data["configured"] is True
 
 
-def test_ai_status_mixed_mode_logic_direct():
-    """Verify mixed-mode detection logic directly by inspecting the response from routes."""
-    # We can't easily inject a mixed real provider without installing optional packages.
-    # Instead, verify the logic table via the routes module directly (offline, no HTTP).
-    from pipeline.api import routes  # noqa: F401 — just verify the module loads cleanly
+def test_ai_status_endpoint_mixed_mode_real_emb_test_llm():
+    """GET /api/v1/ai/status returns mode=mixed: real (non-test) embedding + test LLM.
+    Patches get_embedding_provider at the module where it is looked up inside get_ai_status.
+    """
+    from unittest.mock import patch, MagicMock
 
-    # Replicate the logic for verification
-    _TEST_EMBEDDING_IDS = frozenset({"test", "test-deterministic"})
-    _TEST_LLM_IDS = frozenset({"test", "test-llm"})
+    os.environ["LLM_PROVIDER"] = "test"
+    reset_llm_provider_cache()
 
-    def mode_for(emb_id, llm_id, configured=True):
-        emb_is_test = emb_id in _TEST_EMBEDDING_IDS
-        llm_is_test = llm_id in _TEST_LLM_IDS
-        if not configured:
-            return "error"
-        if emb_is_test and llm_is_test:
-            return "test"
-        if not emb_is_test and not llm_is_test:
-            return "real"
-        return "mixed"
+    fake_emb = MagicMock()
+    fake_emb.provider_id = "sentence_transformers"
+    fake_emb.model_name = "all-MiniLM-L6-v2"
+    fake_emb.dimension = 384
 
-    assert mode_for("test", "test") == "test"
-    assert mode_for("sentence_transformers", "openai") == "real"
-    assert mode_for("test", "openai") == "mixed"
-    assert mode_for("sentence_transformers", "test") == "mixed"
-    assert mode_for("test", "test", configured=False) == "error"
+    # get_ai_status does:  from embeddings import get_embedding_provider
+    with patch("embeddings.get_embedding_provider", return_value=fake_emb):
+        client = TestClient(app)
+        res = client.get("/api/v1/ai/status")
+
+    assert res.status_code == 200
+    data = res.json()
+    assert data["mode"] == "mixed", f"Expected mode=mixed, got {data['mode']}"
+    assert data["embedding"]["provider"] == "sentence_transformers"
+    assert data["llm"]["provider"] == "test"
+    assert data["configured"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -251,33 +249,78 @@ def test_embedding_version_helper():
 
 
 def test_mixed_dimension_retrieval_rejected():
-    """retrieve_similar_chunks raises ValueError if query vector dimension does not match stored vector."""
-    class FakeRow:
-        def __init__(self, vec_json):
-            self.vector_json = vec_json
-            self.id = "se-1"
-            self.model_name = "test"
+    """retrieve_similar_chunks raises ValueError when stored vector dimension != query vector dimension.
+    Exercises the real production retrieve_similar_chunks code path.
+    """
+    import tempfile
+    from pipeline.db.engine import get_engine, create_all_tables, get_session_factory
+    from pipeline.db.store import persist_analysis
+    from pipeline.embeddings import TestEmbeddingProvider
 
-    class FakeChunk:
-        def __init__(self):
-            self.chunk_id = "c-1"
-            self.file_path = "app.py"
-            self.start_line = 1
-            self.end_line = 10
-            self.language = "python"
-            self.entity_name = "foo"
+    # Build a minimal run with 128-d embeddings in the DB
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        db_url = f"sqlite:///{tmpdir}/dim_mismatch.db"
+        engine = get_engine(db_url)
+        create_all_tables(engine)
+        SessionFactory = get_session_factory(engine)
 
-    query_vector = [0.1] * 64
-    stored_vector = [0.1] * 128  # Dimension mismatch!
+        chunk = {
+            "chunk_id": "sc_dim_test_001",
+            "file_path": "app.py",
+            "start_line": 1,
+            "end_line": 5,
+            "chunk_text": "def add(a, b): return a + b",
+            "language": "python",
+            "entity_name": "add",
+            "entity_type": "function",
+            "provenance": "TEST",
+            "commit_sha": "abc123",
+        }
 
-    import math
-    def _cosine_sim(v1, v2):
-        if len(v1) != len(v2):
-            raise ValueError(f"Incompatible vector dimensions: query is {len(v1)}d, stored is {len(v2)}d")
-        return 1.0
+        # Persist with 128-d provider
+        prov_128 = TestEmbeddingProvider(dimension=128)
+        emb_vector = prov_128.embed_documents([chunk["chunk_text"]])[0]
+        embedding_record = {
+            "chunk_id": chunk["chunk_id"],
+            "model_name": prov_128.name,
+            "vector_json": emb_vector,
+        }
 
-    with pytest.raises(ValueError, match="Incompatible"):
-        _cosine_sim(query_vector, stored_vector)
+        result_dict = {
+            "schema_version": "1.0.0",
+            "cache_schema_version": "v4",
+            "analyzer_version": "test",
+            "chunker_version": "1",
+            "embedding_pipeline_version": "1",
+            "repository": "https://github.com/pytest-dev/iniconfig",
+            "commit_sha": "abc123",
+            "cache_snapshot_id": "snap_dim_test",
+            "cache_key_basis": "git_sha",
+            "analyzed_at_utc": "2026-01-01T00:00:00Z",
+            "languages": ["python"],
+            "analysis_status": "complete",
+            "files_analyzed": 1,
+            "parse_errors": [],
+            "static_analysis": {},
+            "knowledge_graph_summary": {"total_nodes": 0, "total_edges": 0},
+            "knowledge_graph": {"nodes": [], "edges": []},
+            "health_score": {"composite_health_score": 80.0, "status": "good"},
+            "source_chunks": [chunk],
+            "source_embeddings": [embedding_record],
+        }
+
+        with SessionFactory() as session:
+            run_id = persist_analysis(session, result_dict)
+            session.commit()
+
+            # Now query with a 64-d provider — must raise ValueError
+            prov_64 = TestEmbeddingProvider(dimension=64)
+            with pytest.raises(ValueError, match="Incompatible"):
+                retrieve_similar_chunks(session, run_id=run_id, query_text="add function",
+                                        top_k=5, provider=prov_64)
+
+        # Dispose engine before temp dir cleanup to release SQLite file lock on Windows
+        engine.dispose()
 
 
 def test_version_alignment():

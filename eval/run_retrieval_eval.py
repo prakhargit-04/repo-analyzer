@@ -2,29 +2,35 @@
 Retrieval Evaluation Runner — S24 Part 1.
 
 Usage:
-    python -m eval.run_retrieval_eval \\
-        --embedding-provider test \\
-        --k 1,3,5,10 \\
-        [--smoke]
+    # Smoke test (harness plumbing validation only — not evidence of semantic retrieval quality):
+    python -m eval.run_retrieval_eval --smoke
+
+    # Full evaluation (requires cloned repos at pinned SHAs; run ONLY after human review):
+    python -m eval.run_retrieval_eval --embedding-provider test --k 1,3,5,10
 
 Flags:
     --embedding-provider  Provider name: 'test' or 'sentence-transformers' (default: test)
-    --k                   Comma-separated list of k values for recall@k (default: 1,3,5,10)
-    --smoke               Smoke-test mode: skips cloning pinned repos; uses a throwaway local
-                          fixture. Output goes ONLY to system temp, never to eval/results/.
+    --k                   Comma-separated k values for recall@k (default: 1,3,5,10)
+    --smoke               Smoke-test mode: uses local fixture; output to temp dir only.
+                          CLEARLY labelled: harness plumbing validation only.
+
+SAFETY GATES (enforced at runtime):
+  1. All questions must be status="reviewed" — refuses to run if any are "draft".
+  2. Resolved commit SHA must exactly match the configured pinned SHA — fails clearly otherwise.
+  3. Chunks are produced by the production chunker (pipeline/chunker.py chunk_single_file).
+  4. Retrieval uses the production retrieve_similar_chunks() — no duplicate implementation.
+  5. Lexical baseline ranks the SAME production chunks, same query.
 
 RULES:
 - Does NOT change the production retrieval algorithm.
-- Reuses the existing pipeline chunking, embedding, and retrieval code unchanged.
-- Lexical baseline lives entirely inside this file (~20 lines, zero new dependencies).
-- Output is machine-readable JSON + short markdown summary.
+- Reuses existing pipeline chunking, embedding, and retrieval code unchanged.
+- Lexical baseline lives entirely inside eval/ (~20 lines, zero new dependencies).
 - Results land in eval/results/<timestamp>/ unless --smoke (temp dir only).
 """
 from __future__ import annotations
 
 import argparse
 import json
-import math
 import os
 import re
 import sys
@@ -52,10 +58,12 @@ for _p in [str(_REPO_ROOT), str(_PIPELINE_DIR)]:
 
 def _import_pipeline() -> Dict[str, Any]:
     """Import pipeline modules — deferred so sys.path is set first."""
-    from embeddings import get_embedding_provider, reset_embedding_provider_cache
+    from embeddings import get_embedding_provider, reset_embedding_provider_cache, EMBEDDING_PIPELINE_VERSION
     from embeddings_stage import generate_source_embeddings
     from db.engine import get_engine, create_all_tables, get_session_factory
     from db.store import persist_analysis, retrieve_similar_chunks
+    from chunker import chunk_single_file, SOURCE_CHUNKER_VERSION
+    from clone import clone_repository
     return {
         "get_embedding_provider": get_embedding_provider,
         "reset_embedding_provider_cache": reset_embedding_provider_cache,
@@ -65,6 +73,8 @@ def _import_pipeline() -> Dict[str, Any]:
         "get_session_factory": get_session_factory,
         "persist_analysis": persist_analysis,
         "retrieve_similar_chunks": retrieve_similar_chunks,
+        "chunk_single_file": chunk_single_file,
+        "clone_repository": clone_repository,
     }
 
 
@@ -108,7 +118,10 @@ def compute_metrics(
         agg[f"hit@{k}"] = sum(hits) / len(hits)
         agg[f"recall@{k}"] = sum(recalls) / len(recalls)
 
-    agg["mrr"] = sum(mrr(r["retrieved_files"], r["expected_files"]) for r in answerable) / len(answerable)
+    agg["mrr"] = (
+        sum(mrr(r["retrieved_files"], r["expected_files"]) for r in answerable)
+        / len(answerable)
+    )
 
     latencies = [r["latency_ms"] for r in results]
     agg["latency_median_ms"] = median(latencies)
@@ -121,7 +134,8 @@ def compute_metrics(
         subset = [r for r in answerable if r.get("difficulty") == diff]
         if subset:
             agg[f"mrr_{diff}"] = (
-                sum(mrr(r["retrieved_files"], r["expected_files"]) for r in subset) / len(subset)
+                sum(mrr(r["retrieved_files"], r["expected_files"]) for r in subset)
+                / len(subset)
             )
             agg[f"count_{diff}"] = len(subset)
 
@@ -131,7 +145,8 @@ def compute_metrics(
         label = "paraphrase" if is_para else "non_paraphrase"
         if subset:
             agg[f"mrr_{label}"] = (
-                sum(mrr(r["retrieved_files"], r["expected_files"]) for r in subset) / len(subset)
+                sum(mrr(r["retrieved_files"], r["expected_files"]) for r in subset)
+                / len(subset)
             )
             agg[f"count_{label}"] = len(subset)
 
@@ -142,11 +157,11 @@ def compute_metrics(
         agg["top1_score_min"] = min(top1_scores)
         agg["top1_score_max"] = max(top1_scores)
 
-    # Unanswerable: top-1 score distribution tracked separately
+    # Unanswerable: top-1 score tracked separately — no recall/MRR
     unanswerable = [r for r in results if r["unanswerable"]]
     if unanswerable:
-        u_scores = [r["top1_score"] for r in unanswerable if r["top1_score"] is not None]
         agg["unanswerable_count"] = len(unanswerable)
+        u_scores = [r["top1_score"] for r in unanswerable if r["top1_score"] is not None]
         if u_scores:
             agg["unanswerable_top1_score_mean"] = sum(u_scores) / len(u_scores)
             agg["unanswerable_top1_score_max"] = max(u_scores)
@@ -155,7 +170,7 @@ def compute_metrics(
 
 
 # ---------------------------------------------------------------------------
-# Lexical baseline (~20 lines, no new dependency)
+# Lexical baseline (~20 lines, no new dependency, ranks SAME production chunks)
 # ---------------------------------------------------------------------------
 
 def _tokenise(text: str) -> List[str]:
@@ -173,7 +188,7 @@ def lexical_score(query: str, chunk_text: str) -> float:
 
 
 def lexical_rank(query: str, chunks: List[Dict[str, Any]], top_k: int) -> List[Dict[str, Any]]:
-    """Rank the same chunk dicts by lexical_score descending (deterministic — ties by chunk_id)."""
+    """Rank SAME production chunk dicts by lexical_score descending (tie-break by chunk_id)."""
     scored = [
         (lexical_score(query, c.get("chunk_text", "")), c.get("chunk_id", ""), c)
         for c in chunks
@@ -183,67 +198,116 @@ def lexical_rank(query: str, chunks: List[Dict[str, Any]], top_k: int) -> List[D
 
 
 # ---------------------------------------------------------------------------
-# Build corpus from local path using existing pipeline APIs
+# Safety gates
 # ---------------------------------------------------------------------------
 
-def _build_chunks_from_path(local_path: str) -> List[Dict[str, Any]]:
+def _check_questions_all_reviewed(questions: List[Dict[str, Any]]) -> None:
     """
-    Walk a local directory and produce minimal SourceChunk dicts suitable
-    for persist_analysis(). Uses the same chunk schema as the pipeline.
-    Does NOT call the real AST parser (which requires repo analysis to have
-    run first). Produces line-window chunks directly from file text.
+    SAFETY GATE: Refuse to run if any question is not status='reviewed'.
+    Smoke mode bypasses this gate (smoke questions have no status field).
     """
-    import hashlib
+    not_reviewed = [
+        q["id"] for q in questions
+        if q.get("status", "reviewed") != "reviewed"
+    ]
+    if not_reviewed:
+        ids = ", ".join(not_reviewed)
+        raise RuntimeError(
+            f"SAFETY GATE TRIGGERED: {len(not_reviewed)} question(s) are not status='reviewed'.\n"
+            f"Question IDs: {ids}\n"
+            "Human review of eval/questions.json is required before running a full evaluation.\n"
+            "Do NOT mark questions reviewed yourself — that is the human's role."
+        )
 
-    chunks: List[Dict[str, Any]] = []
+
+def _verify_sha(local_path: str, expected_sha: str) -> str:
+    """
+    SAFETY GATE: Verify that HEAD of the cloned repo exactly matches expected_sha.
+    Returns the resolved SHA. Raises RuntimeError if it doesn't match.
+    """
+    import subprocess
+    resolved = subprocess.run(
+        ["git", "-C", local_path, "rev-parse", "HEAD"],
+        check=True, capture_output=True, text=True, timeout=30,
+    ).stdout.strip()
+    if resolved != expected_sha:
+        raise RuntimeError(
+            f"SAFETY GATE TRIGGERED: SHA mismatch.\n"
+            f"  Expected: {expected_sha}\n"
+            f"  Got:      {resolved}\n"
+            f"Refusing to evaluate at an unpinned commit."
+        )
+    return resolved
+
+
+# ---------------------------------------------------------------------------
+# Build corpus using PRODUCTION chunker (pipeline/chunker.py)
+# ---------------------------------------------------------------------------
+
+def _build_chunks_from_local_path(
+    local_path: str,
+    commit_sha: str,
+    chunk_single_file_fn: Any,
+) -> List[Dict[str, Any]]:
+    """
+    Walk local_path and produce source chunks using the PRODUCTION chunker
+    (pipeline/chunker.py::chunk_single_file with parse_result=None,
+    which triggers the chunker's own line-window fallback).
+
+    This is the same code path the product uses for uncovered lines.
+    """
     src_path = Path(local_path)
-    WINDOW = 30  # lines per chunk
+    all_chunks: List[Dict[str, Any]] = []
 
-    for ext in (".py", ".js", ".ts", ".mjs"):
+    supported_exts = (".py", ".js", ".ts", ".mjs", ".jsx", ".tsx", ".java")
+    for ext in supported_exts:
         for fpath in sorted(src_path.rglob(f"*{ext}")):
             try:
                 rel = str(fpath.relative_to(local_path)).replace("\\", "/")
-                lines = fpath.read_text(encoding="utf-8", errors="replace").splitlines()
-            except Exception:
+            except ValueError:
                 continue
+            # chunk_single_file with parse_result=None → production line-window chunker
+            chunks = chunk_single_file_fn(
+                repo_root=local_path,
+                rel_path=rel,
+                commit_sha=commit_sha,
+                parse_result=None,
+            )
+            all_chunks.extend(c.to_dict() if hasattr(c, "to_dict") else c for c in chunks)
 
-            for start in range(0, max(1, len(lines)), WINDOW):
-                end = min(start + WINDOW, len(lines))
-                text = "\n".join(lines[start:end])
-                chunk_id = hashlib.sha256(f"{rel}:{start}:{end}:{text}".encode()).hexdigest()[:16]
-                lang = {"py": "python", "js": "javascript", "ts": "typescript", "mjs": "javascript"}.get(
-                    ext.lstrip("."), "unknown"
-                )
-                chunks.append({
-                    "chunk_id": chunk_id,
-                    "file_path": rel,
-                    "start_line": start + 1,
-                    "end_line": end,
-                    "chunk_text": text,
-                    "language": lang,
-                    "entity_name": None,
-                    "entity_type": None,
-                    "provenance": "EVAL_LINE_WINDOW",
-                    "commit_sha": "smoke",
-                })
-
-    return chunks
+    # Deterministic ordering: file_path then start_line
+    all_chunks.sort(key=lambda c: (c.get("file_path", ""), c.get("start_line", 0)))
+    return all_chunks
 
 
-def _build_corpus(local_path: str, pipe: Dict[str, Any], db_url: str):
+def _build_corpus(
+    local_path: str,
+    commit_sha: str,
+    pipe: Dict[str, Any],
+    db_url: str,
+    repo_url: str,
+) -> tuple:
     """
-    Build chunk corpus, embed, and persist to a fresh SQLite DB.
+    Build chunk corpus using production chunker, embed, persist.
     Returns (run_id, chunks, session).
     """
-    chunks = _build_chunks_from_path(local_path)
-
-    # Generate embeddings using the existing embeddings_stage API
-    provider = pipe["get_embedding_provider"]()
-    embeddings, _status = pipe["generate_source_embeddings"](
-        chunks, repo_url=local_path, commit_sha="smoke", provider=provider
+    chunks = _build_chunks_from_local_path(
+        local_path, commit_sha, pipe["chunk_single_file"]
     )
 
-    # Persist to temp DB using the existing store API
+    if not chunks:
+        raise RuntimeError(
+            f"No source chunks produced for {local_path}. "
+            "Check that the directory contains supported source files."
+        )
+
+    # Embed using production provider
+    provider = pipe["get_embedding_provider"]()
+    embeddings, _status = pipe["generate_source_embeddings"](
+        chunks, repo_url=repo_url, commit_sha=commit_sha, provider=provider
+    )
+
+    # Persist using production store API
     engine = pipe["get_engine"](db_url)
     pipe["create_all_tables"](engine)
     SessionFactory = pipe["get_session_factory"](engine)
@@ -252,18 +316,18 @@ def _build_corpus(local_path: str, pipe: Dict[str, Any], db_url: str):
     result_dict = {
         "schema_version": "1.0.0",
         "cache_schema_version": "v4",
-        "analyzer_version": "eval-smoke",
+        "analyzer_version": "eval-harness",
         "chunker_version": "1",
         "embedding_pipeline_version": "1",
-        "repository": local_path,
-        "repo_url": local_path,
-        "commit_sha": "smoke",
-        "cache_snapshot_id": f"smoke-{uuid.uuid4().hex[:8]}",
-        "cache_key_basis": "local",
+        "repository": repo_url,
+        "repo_url": repo_url,
+        "commit_sha": commit_sha,
+        "cache_snapshot_id": f"eval-{uuid.uuid4().hex[:8]}",
+        "cache_key_basis": "git_sha",
         "analyzed_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "languages": ["python", "javascript"],
+        "languages": ["python", "javascript", "typescript"],
         "analysis_status": "complete",
-        "files_analyzed": len(set(c["file_path"] for c in chunks)),
+        "files_analyzed": len(set(c.get("file_path", "") for c in chunks)),
         "parse_errors": [],
         "static_analysis": {},
         "knowledge_graph_summary": {"total_nodes": 0, "total_edges": 0},
@@ -292,14 +356,21 @@ def run_evaluation(
 
     pipe = _import_pipeline()
 
-    # Set provider env var before importing/caching
+    # Set provider env var before caching
     os.environ["EMBEDDING_PROVIDER"] = embedding_provider_name
     pipe["reset_embedding_provider_cache"]()
 
     max_k = max(k_values)
 
     if smoke:
+        # -----------------------------------------------------------------------
+        # SMOKE MODE — harness plumbing validation only.
+        # NOT evidence of semantic retrieval quality.
+        # Uses local fixture with a synthetic commit SHA (no network needed).
+        # Safety gate for question review is bypassed in smoke mode.
+        # -----------------------------------------------------------------------
         fixture_path = str(_REPO_ROOT / "tests" / "fixtures" / "success_repo")
+        smoke_sha = "0000000000000000000000000000000000000000"
         questions = [
             {
                 "id": "smoke-01",
@@ -309,7 +380,6 @@ def run_evaluation(
                 "difficulty": "lookup",
                 "paraphrase": False,
                 "unanswerable": False,
-                "status": "draft",
             },
             {
                 "id": "smoke-02",
@@ -319,43 +389,62 @@ def run_evaluation(
                 "difficulty": "lookup",
                 "paraphrase": False,
                 "unanswerable": True,
-                "status": "draft",
             },
         ]
-        repos = [("smoke", fixture_path)]
+        repos = [("smoke", fixture_path, smoke_sha, fixture_path)]
+
     else:
+        # -----------------------------------------------------------------------
+        # FULL EVALUATION MODE — enforces all safety gates.
+        # -----------------------------------------------------------------------
         datasets_path = _REPO_ROOT / "eval" / "datasets.json"
         questions_path = _REPO_ROOT / "eval" / "questions.json"
         with open(datasets_path) as f:
             datasets = json.load(f)["repos"]
         with open(questions_path) as f:
             questions = json.load(f)
-        repos = [(d["id"], d["url"]) for d in datasets]
+
+        # SAFETY GATE 1: All questions must be reviewed
+        _check_questions_all_reviewed(questions)
+
+        repos = []
+        for d in datasets:
+            repos.append((d["id"], d["url"], d["sha"], None))
 
     per_question_results: List[Dict[str, Any]] = []
 
-    for repo_id, repo_path_or_url in repos:
-        if smoke:
-            local_path = repo_path_or_url
+    for repo_id, repo_url, pinned_sha, prebuilt_local_path in repos:
+        if prebuilt_local_path:
+            # Smoke: use pre-existing local path; skip clone and SHA verification
+            local_path = prebuilt_local_path
+            verified_sha = pinned_sha
         else:
-            raise RuntimeError(
-                "Non-smoke cloning is not implemented in this runner. "
-                "Clone the pinned repos manually and extend _build_corpus to accept a pre-cloned path."
-            )
+            # Full eval: clone at pinned SHA and verify HEAD exactly
+            clone_dest = os.path.join(output_dir, f"clone_{repo_id}")
+            print(f"[eval] Cloning {repo_url} @ {pinned_sha} ...", file=sys.stderr)
+            resolved = pipe["clone_repository"](repo_url, clone_dest, commit_sha=pinned_sha)
+            # SAFETY GATE 2: verify SHA matches exactly
+            verified_sha = _verify_sha(clone_dest, pinned_sha)
+            print(f"[eval] SHA verified: {verified_sha}", file=sys.stderr)
+            local_path = clone_dest
 
         db_path = os.path.join(output_dir, f"{repo_id}.db")
         db_url = f"sqlite:///{db_path}"
 
-        run_id, chunks, session = _build_corpus(local_path, pipe, db_url)
+        print(f"[eval] Building corpus for {repo_id} ...", file=sys.stderr)
+        run_id, chunks, session = _build_corpus(
+            local_path, verified_sha, pipe, db_url, repo_url
+        )
+        print(f"[eval] Corpus: {len(chunks)} chunks", file=sys.stderr)
 
-        repo_questions = [q for q in questions if q["repo"] == repo_id]
+        repo_questions = [q for q in questions if q.get("repo") == repo_id]
 
         for q in repo_questions:
             question_text = q["question"]
             expected_files = q.get("expected_files", [])
             is_unanswerable = q.get("unanswerable", False)
 
-            # --- Semantic retrieval (existing production code) ---
+            # --- Semantic retrieval (production code, no reimplementation) ---
             t0 = time.perf_counter()
             sem_result = pipe["retrieve_similar_chunks"](
                 session, run_id=run_id, query_text=question_text, top_k=max_k
@@ -366,7 +455,7 @@ def run_evaluation(
             sem_files = [r.get("file_path", "") for r in sem_chunks]
             top1_score = sem_chunks[0].get("similarity_score") if sem_chunks else None
 
-            # --- Lexical baseline (same chunk list, same query) ---
+            # --- Lexical baseline (SAME corpus, same query, different ranking only) ---
             lex_ranked = lexical_rank(question_text, chunks, max_k)
             lex_files = [c.get("file_path", "") for c in lex_ranked]
 
@@ -378,11 +467,12 @@ def run_evaluation(
                 "difficulty": q.get("difficulty"),
                 "paraphrase": q.get("paraphrase", False),
                 "unanswerable": is_unanswerable,
+                "verified_sha": verified_sha,
                 # Semantic
                 "retrieved_files": sem_files,
                 "top1_score": top1_score,
                 "latency_ms": latency_ms,
-                # Lexical baseline
+                # Lexical baseline (same chunks, same query)
                 "lexical_retrieved_files": lex_files,
             })
 
@@ -391,7 +481,7 @@ def run_evaluation(
     # Aggregate metrics — semantic
     sem_metrics = compute_metrics(per_question_results, k_values)
 
-    # Aggregate metrics — lexical baseline (reuse same result dicts with swapped retrieved_files)
+    # Aggregate metrics — lexical baseline (swap retrieved_files)
     lex_results = [
         {**r, "retrieved_files": r["lexical_retrieved_files"]}
         for r in per_question_results
@@ -402,6 +492,10 @@ def run_evaluation(
         "embedding_provider": embedding_provider_name,
         "k_values": k_values,
         "smoke": smoke,
+        "smoke_warning": (
+            "HARNESS PLUMBING VALIDATION ONLY — not evidence of semantic retrieval quality."
+            if smoke else None
+        ),
         "semantic": sem_metrics,
         "lexical_baseline": lex_metrics,
         "per_question": per_question_results,
@@ -419,6 +513,14 @@ def write_markdown_summary(result: Dict[str, Any], out_path: str) -> None:
     lines = [
         "# Retrieval Evaluation Summary",
         "",
+    ]
+    if result.get("smoke"):
+        lines += [
+            "> **SMOKE MODE — Harness plumbing validation only.**",
+            "> This is NOT evidence of semantic retrieval quality.",
+            "",
+        ]
+    lines += [
         f"- **Embedding provider**: `{result['embedding_provider']}`",
         f"- **Smoke mode**: {result['smoke']}",
         f"- **Answerable questions**: {sem.get('answerable_count', 0)}",
@@ -470,7 +572,10 @@ def main(argv: Optional[List[str]] = None) -> None:
     )
     parser.add_argument(
         "--smoke", action="store_true",
-        help="Smoke-test mode: use local fixture, output to temp dir only",
+        help=(
+            "Smoke-test mode: harness plumbing validation only — "
+            "NOT evidence of semantic retrieval quality. Output to temp dir only."
+        ),
     )
     args = parser.parse_args(argv)
 
@@ -478,7 +583,11 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     if args.smoke:
         output_dir = tempfile.mkdtemp(prefix="repo_eval_smoke_")
-        print(f"[smoke] Output dir: {output_dir}", file=sys.stderr)
+        print(
+            f"[smoke] Output dir: {output_dir}\n"
+            "[smoke] HARNESS PLUMBING VALIDATION ONLY — not evidence of semantic retrieval quality.",
+            file=sys.stderr,
+        )
     else:
         ts = time.strftime("%Y%m%d_%H%M%S")
         output_dir = str(_REPO_ROOT / "eval" / "results" / ts)
@@ -492,19 +601,20 @@ def main(argv: Optional[List[str]] = None) -> None:
         output_dir=output_dir,
     )
 
-    # Write outputs
     json_path = os.path.join(output_dir, "results.json")
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(result, f, indent=2)
-    print(f"[eval] JSON results: {json_path}", file=sys.stderr)
+    print(f"[eval] JSON: {json_path}", file=sys.stderr)
 
     md_path = os.path.join(output_dir, "summary.md")
     write_markdown_summary(result, md_path)
-    print(f"[eval] Markdown summary: {md_path}", file=sys.stderr)
+    print(f"[eval] Markdown: {md_path}", file=sys.stderr)
 
-    # Brief summary to stdout
     sem = result["semantic"]
-    print("\n=== Evaluation complete ===")
+    if args.smoke:
+        print("\n=== SMOKE PASS — harness plumbing validation only ===")
+    else:
+        print("\n=== Evaluation complete ===")
     print(f"Provider: {args.embedding_provider}  Smoke: {args.smoke}")
     print(f"Answerable: {sem.get('answerable_count', 0)}  MRR: {sem.get('mrr', 'N/A')}")
     for k in k_values:
