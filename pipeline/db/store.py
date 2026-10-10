@@ -1,0 +1,1241 @@
+"""
+Persistence store functions for the repository analysis layer.
+
+All functions take a SQLAlchemy Session as first argument and operate within
+the caller's transaction. The caller is responsible for commit/rollback.
+
+Public API:
+  persist_analysis(session, result_dict)  -> run_id: str
+  get_latest_analysis(session, repo_url)  -> dict | None
+  get_analysis_by_run_id(session, run_id) -> dict | None
+  get_all_runs_for_repo(session, repo_url) -> list[dict]
+
+Design invariants:
+  - Repository and Snapshot rows are upserted (get-or-create).
+  - Each call to persist_analysis creates a *new* AnalysisRun row so
+    re-analyses are always recorded without corrupting prior runs.
+  - A failed/partial run is stored with status="failed"/"partial",
+    not silently discarded.
+  - The canonical JSON (result_dict) is fully recoverable from DB rows
+    via get_analysis_by_run_id.
+"""
+from __future__ import annotations
+
+import json
+import math
+from datetime import datetime, timezone, timedelta
+from typing import Any, Dict, List, Optional
+
+from sqlalchemy.orm import Session
+from sqlalchemy import select, func, or_
+
+from .models import (
+    Repository,
+    Snapshot,
+    AnalysisRun,
+    AnalyzerResult,
+    FileRecord,
+    EntityRecord,
+    GraphNode,
+    GraphEdge,
+    Finding,
+    HealthScore,
+    AnalysisJob,
+    AnalysisJobStage,
+    SourceChunk,
+    SourceEmbedding,
+)
+
+
+class EmbeddingMismatchError(Exception):
+    """Stored embeddings cannot be compared with the active provider."""
+
+
+def _graph_node_dict(gn: GraphNode) -> dict:
+    """Return the canonical graph-node representation used by read APIs."""
+    node = {"id": gn.node_id, "type": gn.node_type, "provenance": gn.provenance}
+    if gn.name is not None:
+        node["name"] = gn.name
+    if gn.file_path is not None:
+        node["file"] = gn.file_path
+    if gn.start_line is not None:
+        node["start_line"] = gn.start_line
+    if gn.end_line is not None:
+        node["end_line"] = gn.end_line
+    node.update(_uj(gn.attributes_json) or {})
+    return node
+
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+def _j(obj: Any) -> Optional[str]:
+    """Safely serialize obj to JSON string, or None if obj is None."""
+    return json.dumps(obj, sort_keys=True) if obj is not None else None
+
+
+def _uj(s: Optional[str]) -> Any:
+    """Safely deserialize JSON string to Python object, or None."""
+    return json.loads(s) if s else None
+
+
+def _get_or_create_repo(session: Session, repo_url: str) -> Repository:
+    row = session.execute(
+        select(Repository).where(Repository.repo_url == repo_url)
+    ).scalar_one_or_none()
+    if row is None:
+        row = Repository(repo_url=repo_url)
+        session.add(row)
+        session.flush()  # populate .id before use
+    return row
+
+
+def _get_or_create_snapshot(
+    session: Session,
+    repository_id: str,
+    snapshot_id: str,
+    commit_sha: Optional[str],
+    cache_key_basis: Optional[str],
+) -> Snapshot:
+    row = session.execute(
+        select(Snapshot).where(
+            Snapshot.repository_id == repository_id,
+            Snapshot.snapshot_id == snapshot_id,
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        row = Snapshot(
+            repository_id=repository_id,
+            snapshot_id=snapshot_id,
+            commit_sha=commit_sha,
+            cache_key_basis=cache_key_basis,
+        )
+        session.add(row)
+        session.flush()
+    return row
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+def persist_analysis(session: Session, result_dict: dict) -> str:
+    """
+    Persist a canonical analysis result to the database.
+
+    Upserts the Repository and Snapshot rows, then inserts a new AnalysisRun
+    plus all child rows (analyzer_results, file_records, entity_records,
+    graph_nodes, graph_edges, findings, health_score).
+
+    Returns the new analysis_runs.id (UUID string).
+
+    The caller must commit() the session after this call succeeds, or
+    rollback() on exception.
+    """
+    repo_url: str = result_dict.get("repository", "unknown")
+    snapshot_id_val: str = result_dict.get("cache_snapshot_id", "unknown")
+    commit_sha_val: Optional[str] = result_dict.get("commit_sha")
+    cache_key_basis_val: Optional[str] = result_dict.get("cache_key_basis")
+
+    # Upsert repository
+    repo = _get_or_create_repo(session, repo_url)
+
+    # Upsert snapshot
+    snap = _get_or_create_snapshot(
+        session,
+        repository_id=repo.id,
+        snapshot_id=snapshot_id_val,
+        commit_sha=commit_sha_val,
+        cache_key_basis=cache_key_basis_val,
+    )
+
+    # Parse analyzed_at_utc
+    analyzed_at: Optional[datetime] = None
+    analyzed_at_str = result_dict.get("analyzed_at_utc")
+    if analyzed_at_str:
+        try:
+            analyzed_at = datetime.fromisoformat(analyzed_at_str)
+        except ValueError:
+            pass
+
+    # Determine run status from analysis_status
+    analysis_status = result_dict.get("analysis_status", "")
+    run_status = {
+        "complete": "complete",
+        "partial": "partial",
+        "failed": "failed",
+    }.get(analysis_status, "partial")
+
+    # Create analysis run
+    run = AnalysisRun(
+        snapshot_id=snap.id,
+        status=run_status,
+        schema_version=result_dict.get("schema_version", ""),
+        cache_schema_version=result_dict.get("cache_schema_version", ""),
+        analyzer_version=result_dict.get("analyzer_version", ""),
+        languages=_j(result_dict.get("languages", [])),
+        files_analyzed=result_dict.get("files_analyzed", 0),
+        parse_errors_json=_j(result_dict.get("parse_errors", [])),
+        knowledge_graph_summary_json=_j(result_dict.get("knowledge_graph_summary")),
+        analysis_status=analysis_status,
+        analyzed_at_utc=analyzed_at,
+    )
+    session.add(run)
+    session.flush()
+
+    # --- analyzer_results ---
+    static_analysis: dict = result_dict.get("static_analysis", {})
+    _SKIP_KEYS = {"scope_policy", "production_files_analyzed", "test_files_excluded"}
+    for tool_name, tool_data in static_analysis.items():
+        if tool_name in _SKIP_KEYS or not isinstance(tool_data, dict):
+            continue
+        ar = AnalyzerResult(
+            run_id=run.id,
+            analyzer_name=tool_name,
+            status=tool_data.get("status", "unknown"),
+            provenance=tool_data.get("provenance", ""),
+            results_json=_j(tool_data.get("results", [])),
+            errors_json=_j(tool_data.get("errors", [])),
+            metadata_json=_j(tool_data.get("metadata", {})),
+        )
+        session.add(ar)
+
+    # --- file_records + entity_records ---
+    graph_nodes_raw: List[dict] = result_dict.get("knowledge_graph", {}).get("nodes", [])
+    # Build a mapping file_path -> list of function/class nodes for entities
+    file_entity_map: Dict[str, List[dict]] = {}
+    for node in graph_nodes_raw:
+        if node.get("type") in ("function", "class", "import_target"):
+            fp = node.get("file", "")
+            if fp:
+                file_entity_map.setdefault(fp, []).append(node)
+
+    # Determine file language from extension
+    def _lang(path: str) -> str:
+        if path.endswith(".py"):
+            return "python"
+        elif path.endswith(".java"):
+            return "java"
+        elif path.endswith((".js", ".jsx")):
+            return "javascript"
+        elif path.endswith((".ts", ".tsx")):
+            return "typescript"
+        return "unknown"
+
+    parse_errors_by_file: Dict[str, str] = {
+        pe["file"]: pe["error"] for pe in result_dict.get("parse_errors", [])
+    }
+
+    file_node_ids: set = {
+        n["id"] for n in graph_nodes_raw if n.get("type") == "file"
+    }
+
+    import uuid
+    for node in graph_nodes_raw:
+        if node.get("type") != "file":
+            continue
+        fp = node["id"]
+        fr_id = str(uuid.uuid4())
+        fr_row = FileRecord(
+            id=fr_id,
+            run_id=run.id,
+            file_path=fp,
+            language=_lang(fp),
+            parse_error=parse_errors_by_file.get(fp),
+        )
+        session.add(fr_row)
+
+        for ent in file_entity_map.get(fp, []):
+            er = EntityRecord(
+                file_record_id=fr_id,
+                entity_type=ent.get("type", "unknown"),
+                name=ent.get("name", ""),
+                node_id=ent.get("id"),
+                start_line=ent.get("start_line"),
+                end_line=ent.get("end_line"),
+                class_owner=ent.get("class_owner"),
+                provenance=ent.get("provenance"),
+                extra_json=_j({
+                    k: v for k, v in ent.items()
+                    if k not in ("type", "name", "id", "file", "start_line",
+                                 "end_line", "class_owner", "provenance")
+                }),
+            )
+            session.add(er)
+
+    # --- graph_nodes ---
+    for node in graph_nodes_raw:
+        gn = GraphNode(
+            run_id=run.id,
+            node_id=node.get("id", ""),
+            node_type=node.get("type", "unknown"),
+            name=node.get("name"),
+            file_path=node.get("file"),
+            start_line=node.get("start_line"),
+            end_line=node.get("end_line"),
+            provenance=node.get("provenance"),
+            attributes_json=_j({
+                k: v for k, v in node.items()
+                if k not in ("id", "type", "name", "file", "start_line", "end_line", "provenance")
+            }),
+        )
+        session.add(gn)
+
+    # --- graph_edges ---
+    graph_edges_raw: List[dict] = result_dict.get("knowledge_graph", {}).get("edges", [])
+    for edge in graph_edges_raw:
+        ge = GraphEdge(
+            run_id=run.id,
+            source=edge.get("source", ""),
+            target=edge.get("target", ""),
+            relation=edge.get("relation", ""),
+            confidence=edge.get("confidence"),
+            provenance=edge.get("provenance"),
+            attributes_json=_j({
+                k: v for k, v in edge.items()
+                if k not in ("source", "target", "relation", "confidence", "provenance")
+            }),
+        )
+        session.add(ge)
+
+    # --- findings (from graph finding nodes) ---
+    for node in graph_nodes_raw:
+        if node.get("type") != "finding":
+            continue
+        f = Finding(
+            run_id=run.id,
+            analyzer=node.get("analyzer", ""),
+            rule_id=node.get("rule_id"),
+            severity=node.get("severity"),
+            file_path=node.get("file"),
+            line=node.get("line"),
+            message=node.get("message"),
+            provenance=node.get("provenance"),
+            raw_json=_j(node),
+        )
+        session.add(f)
+
+    # --- health_score ---
+    hs_dict: dict = result_dict.get("health_score", {})
+    if hs_dict:
+        hs = HealthScore(
+            run_id=run.id,
+            composite_health_score=hs_dict.get("composite_health_score"),
+            status=hs_dict.get("status", "unknown"),
+            sub_scores_json=_j(hs_dict.get("sub_scores")),
+            component_statuses_json=_j(hs_dict.get("component_statuses")),
+            weights_used_json=_j(hs_dict.get("weights_used")),
+            weights_renormalized=bool(hs_dict.get("weights_renormalized", False)),
+            missing_components_json=_j(hs_dict.get("missing_components")),
+            formula=hs_dict.get("formula"),
+            scope_policy=hs_dict.get("scope_policy"),
+        )
+        session.add(hs)
+
+    # --- source_chunks (S19) ---
+    source_chunks_raw: List[dict] = result_dict.get("source_chunks", [])
+    sc_id_map: Dict[str, str] = {}
+    for chunk in source_chunks_raw:
+        sc_id = str(uuid.uuid4())
+        sc = SourceChunk(
+            id=sc_id,
+            run_id=run.id,
+            chunk_id=chunk.get("chunk_id", ""),
+            file_path=chunk.get("file_path", ""),
+            start_line=chunk.get("start_line", 1),
+            end_line=chunk.get("end_line", 1),
+            chunk_text=chunk.get("chunk_text", ""),
+            language=chunk.get("language"),
+            entity_name=chunk.get("entity_name"),
+            entity_type=chunk.get("entity_type"),
+            provenance=chunk.get("provenance"),
+            chunk_hash=chunk.get("chunk_hash", ""),
+            commit_sha=chunk.get("commit_sha") or commit_sha_val,
+            chunker_version=chunk.get("chunker_version", "1"),
+            schema_version=chunk.get("schema_version", "1"),
+        )
+        session.add(sc)
+        if sc.chunk_id:
+            sc_id_map[sc.chunk_id] = sc_id
+
+    # --- source_embeddings (S20) ---
+    source_embeddings_raw: List[dict] = result_dict.get("source_embeddings", [])
+    for emb in source_embeddings_raw:
+        chunk_id = emb.get("chunk_id", "")
+        sc_id = sc_id_map.get(chunk_id) or emb.get("source_chunk_id")
+        if not sc_id:
+            continue
+        se = SourceEmbedding(
+            run_id=run.id,
+            source_chunk_id=sc_id,
+            chunk_id=chunk_id,
+            repo_url=repo_url,
+            commit_sha=emb.get("commit_sha") or commit_sha_val,
+            model_name=emb.get("model_name", "unknown"),
+            model_version=emb.get("model_version", "1.0"),
+            dimension=emb.get("dimension", 0),
+            pipeline_version=emb.get("pipeline_version", "1"),
+            vector_json=_j(emb.get("vector", [])),
+        )
+        session.add(se)
+
+    session.flush()
+    return run.id
+
+
+# ---------------------------------------------------------------------------
+# Source Chunks API Helpers (S19)
+# ---------------------------------------------------------------------------
+
+def get_source_chunks_for_run(
+    session: Session,
+    run_id: str,
+    file_path: Optional[str] = None,
+    start_line: Optional[int] = None,
+    end_line: Optional[int] = None,
+    entity_name: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict:
+    """Retrieve source chunks for an analysis run with optional filtering and pagination."""
+    stmt = select(SourceChunk).where(SourceChunk.run_id == run_id)
+    if file_path:
+        stmt = stmt.where(SourceChunk.file_path == file_path)
+    if start_line is not None:
+        stmt = stmt.where(SourceChunk.end_line >= start_line)
+    if end_line is not None:
+        stmt = stmt.where(SourceChunk.start_line <= end_line)
+    if entity_name:
+        stmt = stmt.where(SourceChunk.entity_name == entity_name)
+
+    stmt = stmt.order_by(SourceChunk.file_path, SourceChunk.start_line)
+
+    all_rows = session.execute(stmt).scalars().all()
+    total = len(all_rows)
+    paginated = all_rows[offset : offset + limit]
+
+    chunks_data = [
+        {
+            "chunk_id": sc.chunk_id,
+            "run_id": sc.run_id,
+            "file_path": sc.file_path,
+            "start_line": sc.start_line,
+            "end_line": sc.end_line,
+            "chunk_text": sc.chunk_text,
+            "language": sc.language,
+            "entity_name": sc.entity_name,
+            "entity_type": sc.entity_type,
+            "provenance": sc.provenance,
+            "chunk_hash": sc.chunk_hash,
+            "commit_sha": sc.commit_sha,
+            "chunker_version": sc.chunker_version,
+            "schema_version": sc.schema_version,
+        }
+        for sc in paginated
+    ]
+
+    return {
+        "run_id": run_id,
+        "total_chunks": total,
+        "chunks": chunks_data,
+        "pagination": {"total": total, "limit": limit, "offset": offset},
+    }
+
+
+def resolve_source_chunk(
+    session: Session,
+    run_id: str,
+    file_path: str,
+    line: int,
+) -> Optional[dict]:
+    """Resolve a specific file line to its matching source chunk for evidence preview."""
+    stmt = (
+        select(SourceChunk)
+        .where(
+            SourceChunk.run_id == run_id,
+            SourceChunk.file_path == file_path,
+            SourceChunk.start_line <= line,
+            SourceChunk.end_line >= line,
+        )
+        .order_by(SourceChunk.start_line.desc())
+    )
+    sc = session.execute(stmt).scalars().first()
+    if not sc:
+        return None
+
+    return {
+        "chunk_id": sc.chunk_id,
+        "run_id": sc.run_id,
+        "file_path": sc.file_path,
+        "start_line": sc.start_line,
+        "end_line": sc.end_line,
+        "chunk_text": sc.chunk_text,
+        "language": sc.language,
+        "entity_name": sc.entity_name,
+        "entity_type": sc.entity_type,
+        "provenance": sc.provenance,
+        "chunk_hash": sc.chunk_hash,
+        "commit_sha": sc.commit_sha,
+        "chunker_version": sc.chunker_version,
+        "schema_version": sc.schema_version,
+    }
+
+
+def retrieve_similar_chunks(
+    session: Session,
+    run_id: str,
+    query_text: str,
+    top_k: int = 5,
+    provider: Optional[Any] = None,
+) -> dict:
+    """
+    Perform repository/commit-scoped vector similarity search over SourceEmbeddings.
+
+    Returns structured retrieval result with similarity scores and full SourceChunk metadata.
+    """
+    from embeddings import get_embedding_provider, BaseEmbeddingProvider
+    active_provider: BaseEmbeddingProvider = provider or get_embedding_provider()
+
+    run = session.execute(
+        select(AnalysisRun).where(AnalysisRun.id == run_id)
+    ).scalar_one_or_none()
+
+    if not run:
+        return {
+            "query": query_text,
+            "run_id": run_id,
+            "repo_url": "unknown",
+            "commit_sha": None,
+            "total_retrieved": 0,
+            "model_name": active_provider.name,
+            "results": [],
+        }
+
+    snap = run.snapshot
+    repo_url = snap.repository.repo_url if snap and snap.repository else "unknown"
+    commit_sha = snap.commit_sha if snap else None
+
+    query_vector = active_provider.embed_query(query_text)
+    query_dim = len(query_vector)
+
+    stmt = (
+        select(SourceEmbedding, SourceChunk)
+        .join(SourceChunk, SourceEmbedding.source_chunk_id == SourceChunk.id)
+        .where(SourceEmbedding.run_id == run_id)
+        .where(SourceEmbedding.model_name == active_provider.name)
+        .where(SourceEmbedding.dimension == query_dim)
+    )
+
+    rows = session.execute(stmt).all()
+    if not rows:
+        # Check if any embeddings exist for this run_id (under different model or dimension)
+        any_emb = session.execute(
+            select(SourceEmbedding).where(SourceEmbedding.run_id == run_id).limit(1)
+        ).scalar_one_or_none()
+        if any_emb:
+            raise EmbeddingMismatchError(f"Incompatible embedding provider or dimension. Stored embeddings do not match active provider '{active_provider.name}' ({query_dim}d). Please re-run analysis with current embedding provider.")
+
+    try:
+        import numpy as np
+        _HAS_NUMPY = True
+    except ImportError:
+        _HAS_NUMPY = False
+
+    def _cosine_sim(v1: list[float], v2: list[float]) -> float:
+        if not v1 or not v2 or len(v1) != len(v2):
+            return 0.0
+        dot = sum(a * b for a, b in zip(v1, v2))
+        norm_a = math.sqrt(sum(a * a for a in v1))
+        norm_b = math.sqrt(sum(b * b for b in v2))
+        if norm_a == 0 or norm_b == 0:
+            return 0.0
+        return dot / (norm_a * norm_b)
+
+    scored_results = []
+    if _HAS_NUMPY and rows:
+        vectors = []
+        valid_rows = []
+        for se, sc in rows:
+            vec = _uj(se.vector_json) or []
+            if len(vec) != query_dim:
+                raise EmbeddingMismatchError(f"Incompatible embedding vector dimensions: query vector is {query_dim}d, but stored vector for chunk '{sc.chunk_id}' is {len(vec)}d ({se.model_name}). Please re-run analysis with current embedding provider.")
+            vectors.append(vec)
+            valid_rows.append((se, sc))
+
+        if vectors:
+            mat = np.array(vectors, dtype=np.float64)
+            q = np.array(query_vector, dtype=np.float64)
+            q_norm = np.linalg.norm(q)
+            mat_norms = np.linalg.norm(mat, axis=1)
+            denom = mat_norms * q_norm
+            scores = np.divide(np.dot(mat, q), denom, out=np.zeros_like(denom), where=denom != 0)
+            for idx, (se, sc) in enumerate(valid_rows):
+                scored_results.append((float(scores[idx]), sc, se))
+    else:
+        for se, sc in rows:
+            vec = _uj(se.vector_json) or []
+            if len(vec) != query_dim:
+                raise EmbeddingMismatchError(f"Incompatible embedding vector dimensions: query vector is {query_dim}d, but stored vector for chunk '{sc.chunk_id}' is {len(vec)}d ({se.model_name}). Please re-run analysis with current embedding provider.")
+            score = _cosine_sim(query_vector, vec)
+            scored_results.append((score, sc, se))
+
+
+    scored_results.sort(key=lambda x: (-x[0], x[1].chunk_id))
+    top_results = scored_results[:top_k]
+
+    results_data = [
+        {
+            "chunk_id": sc.chunk_id,
+            "score": round(float(score), 4),
+            "file_path": sc.file_path,
+            "start_line": sc.start_line,
+            "end_line": sc.end_line,
+            "language": sc.language,
+            "entity_name": sc.entity_name,
+            "entity_type": sc.entity_type,
+            "chunk_text": sc.chunk_text,
+            "provenance": sc.provenance,
+            "commit_sha": sc.commit_sha or commit_sha,
+        }
+        for score, sc, se in top_results
+    ]
+
+    return {
+        "query": query_text,
+        "run_id": run_id,
+        "repo_url": repo_url,
+        "commit_sha": commit_sha,
+        "total_retrieved": len(results_data),
+        "model_name": active_provider.name,
+        "results": results_data,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Retrieval
+# ---------------------------------------------------------------------------
+
+def _run_to_dict(session: Session, run: AnalysisRun) -> dict:
+    """Reconstruct a dict approximating the canonical JSON from DB rows."""
+    snap: Snapshot = run.snapshot
+    repo: Repository = snap.repository
+
+    # analyzer_results -> static_analysis shape
+    static_analysis: dict = {}
+    for ar in run.analyzer_results:
+        static_analysis[ar.analyzer_name] = {
+            "status": ar.status,
+            "results": _uj(ar.results_json) or [],
+            "provenance": ar.provenance,
+            "errors": _uj(ar.errors_json) or [],
+            "metadata": _uj(ar.metadata_json) or {},
+        }
+
+    # graph nodes + edges
+    nodes = []
+    for gn in run.graph_nodes:
+        n: dict = {
+            "id": gn.node_id,
+            "type": gn.node_type,
+            "provenance": gn.provenance,
+        }
+        if gn.name is not None:
+            n["name"] = gn.name
+        if gn.file_path is not None:
+            n["file"] = gn.file_path
+        if gn.start_line is not None:
+            n["start_line"] = gn.start_line
+        if gn.end_line is not None:
+            n["end_line"] = gn.end_line
+        extra = _uj(gn.attributes_json) or {}
+        n.update(extra)
+        nodes.append(n)
+
+    edges = []
+    for ge in run.graph_edges:
+        e: dict = {
+            "source": ge.source,
+            "target": ge.target,
+            "relation": ge.relation,
+            "confidence": ge.confidence,
+            "provenance": ge.provenance,
+        }
+        extra = _uj(ge.attributes_json) or {}
+        e.update(extra)
+        edges.append(e)
+
+    # knowledge_graph_summary
+    kg_summary = _uj(run.knowledge_graph_summary_json)
+    if kg_summary is None:
+        call_edges = [e for e in edges if e.get("relation") == "calls"]
+        inherits_edges = [e for e in edges if e.get("relation") == "inherits"]
+        depends_on_edges = [e for e in edges if e.get("relation") == "depends_on"]
+        finding_edges = [e for e in edges if e.get("relation") == "has_finding"]
+        finding_nodes = [n for n in nodes if n.get("type") == "finding"]
+
+        breakdown = {"high_confidence": 0, "low_confidence": 0, "flagged": 0}
+        for e in call_edges:
+            conf = e.get("confidence", "flagged")
+            breakdown[conf] = breakdown.get(conf, 0) + 1
+        tot_calls = len(call_edges)
+        resolved_pct = round(100 * (breakdown.get("high_confidence", 0) + breakdown.get("low_confidence", 0)) / (tot_calls or 1), 1)
+
+        kg_summary = {
+            "total_nodes": len(nodes),
+            "total_edges": len(edges),
+            "call_edges_total": tot_calls,
+            "call_edges_by_confidence": breakdown,
+            "call_edges_resolved_pct": resolved_pct,
+            "inherits_edges_total": len(inherits_edges),
+            "depends_on_edges_total": len(depends_on_edges),
+            "has_finding_edges_total": len(finding_edges),
+            "finding_nodes_total": len(finding_nodes),
+            "resolution_caveat": (
+                "high_confidence/low_confidence are name-matching heuristics, "
+                "not verified Python scope resolution -- see graph_builder.py docstring."
+            ),
+        }
+
+    # health score
+    hs_dict: dict = {}
+    if run.health_score:
+        hs = run.health_score
+        hs_dict = {
+            "composite_health_score": hs.composite_health_score,
+            "status": hs.status,
+            "sub_scores": _uj(hs.sub_scores_json) or {},
+            "component_statuses": _uj(hs.component_statuses_json) or {},
+            "weights_used": _uj(hs.weights_used_json) or {},
+            "weights_renormalized": hs.weights_renormalized,
+            "missing_components": _uj(hs.missing_components_json) or [],
+            "formula": hs.formula,
+            "scope_policy": hs.scope_policy,
+        }
+
+    return {
+        "run_id": run.id,
+        "schema_version": run.schema_version,
+        "cache_schema_version": run.cache_schema_version,
+        "analyzer_version": run.analyzer_version,
+        "repository": repo.repo_url,
+        "commit_sha": snap.commit_sha,
+        "cache_snapshot_id": snap.snapshot_id,
+        "cache_key_basis": snap.cache_key_basis,
+        "analyzed_at_utc": run.analyzed_at_utc.isoformat() if run.analyzed_at_utc else None,
+        "languages": _uj(run.languages) or [],
+        "analysis_status": run.analysis_status,
+        "files_analyzed": run.files_analyzed,
+        "parse_errors": _uj(run.parse_errors_json) or [],
+        "static_analysis": static_analysis,
+        "knowledge_graph_summary": kg_summary,
+        "knowledge_graph": {"nodes": nodes, "edges": edges},
+        "health_score": hs_dict,
+    }
+
+
+def get_latest_analysis(session: Session, repo_url: str) -> Optional[dict]:
+    """Return the most recent complete (or partial) analysis run for a repo, or None."""
+    run = session.execute(
+        select(AnalysisRun)
+        .join(AnalysisRun.snapshot)
+        .join(Snapshot.repository)
+        .where(Repository.repo_url == repo_url)
+        .where(AnalysisRun.status.in_(["complete", "partial"]))
+        .order_by(AnalysisRun.created_at.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    return _run_to_dict(session, run) if run else None
+
+
+def cleanup_stale_jobs(engine_or_session: Any, stale_seconds: Optional[int] = None) -> int:
+    """Find non-final jobs older than stale_seconds and mark them failed."""
+    if stale_seconds is None:
+        try:
+            stale_seconds = int(os.environ.get("JOB_STALE_SECONDS", "1800"))
+        except ValueError:
+            stale_seconds = 1800
+
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=stale_seconds)
+    non_final_statuses = ["queued", "cloning", "parsing", "analyzing", "graph-building", "scoring", "embedding"]
+
+    def _do_cleanup(sess: Session) -> int:
+        stale_jobs = (
+            sess.query(AnalysisJob)
+            .filter(AnalysisJob.status.in_(non_final_statuses))
+            .filter((AnalysisJob.updated_at <= cutoff) | (AnalysisJob.created_at <= cutoff))
+            .all()
+        )
+        for job in stale_jobs:
+            job.status = "failed"
+            job.error_message = f"Job marked failed on startup: stuck in status '{job.status}' for over {stale_seconds} seconds."
+            job.completed_at = datetime.now(timezone.utc)
+        sess.commit()
+        return len(stale_jobs)
+
+    if isinstance(engine_or_session, Session):
+        return _do_cleanup(engine_or_session)
+    else:
+        with Session(engine_or_session) as sess:
+            return _do_cleanup(sess)
+
+
+def get_analysis_summary_db(session: Session, run_id: str) -> Optional[dict]:
+    """SQL-optimized summary read path without loading full graph."""
+    run = session.execute(
+        select(AnalysisRun)
+        .where(AnalysisRun.id == run_id)
+    ).scalar_one_or_none()
+    if not run:
+        return None
+
+    snap = run.snapshot
+    repo = snap.repository
+
+    hs_dict: dict = {}
+    if run.health_score:
+        hs = run.health_score
+        hs_dict = {
+            "composite_health_score": hs.composite_health_score,
+            "status": hs.status,
+            "sub_scores": _uj(hs.sub_scores_json) or {},
+            "component_statuses": _uj(hs.component_statuses_json) or {},
+            "weights_used": _uj(hs.weights_used_json) or {},
+            "weights_renormalized": hs.weights_renormalized,
+            "missing_components": _uj(hs.missing_components_json) or [],
+            "formula": hs.formula,
+            "scope_policy": hs.scope_policy,
+        }
+
+    kg_summary = _uj(run.knowledge_graph_summary_json)
+    if kg_summary is None:
+        import networkx as nx
+        from graph_builder import graph_summary
+        graph = nx.MultiDiGraph()
+        for node in run.graph_nodes:
+            graph.add_node(node.node_id, **_graph_node_dict(node))
+        for edge in run.graph_edges:
+            graph.add_edge(edge.source, edge.target, relation=edge.relation,
+                           confidence=edge.confidence, provenance=edge.provenance,
+                           **(_uj(edge.attributes_json) or {}))
+        kg_summary = graph_summary(graph)
+
+    return {
+        "run_id": run.id,
+        "repository": repo.repo_url,
+        "commit_sha": snap.commit_sha,
+        "health_score": hs_dict,
+        "knowledge_graph_summary": kg_summary,
+        "files_analyzed": run.files_analyzed,
+        "languages": _uj(run.languages) or [],
+    }
+
+
+def get_analysis_findings_db(
+    session: Session,
+    run_id: str,
+    analyzer: Optional[str] = None,
+    severity: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> Optional[dict]:
+    """SQL-level paginated findings read path."""
+    run = session.execute(select(AnalysisRun.id).where(AnalysisRun.id == run_id)).scalar_one_or_none()
+    if not run:
+        return None
+
+    query = select(Finding).where(Finding.run_id == run_id)
+    if analyzer is not None:
+        query = query.where(Finding.analyzer == analyzer)
+    if severity is not None:
+        query = query.where(Finding.severity == severity)
+    total = session.execute(select(func.count()).select_from(query.subquery())).scalar() or 0
+    rows = session.execute(query.order_by(Finding.file_path.nulls_last(), Finding.line.nulls_last(), Finding.rule_id.nulls_last(), Finding.id).offset(offset).limit(limit)).scalars().all()
+    findings = [_uj(row.raw_json) or {"id": row.id, "type": "finding", "analyzer": row.analyzer, "severity": row.severity, "rule_id": row.rule_id, "file": row.file_path, "line": row.line, "message": row.message, "provenance": row.provenance} for row in rows]
+
+    return {
+        "run_id": run_id,
+        "findings": findings,
+        "pagination": {"total": total, "limit": limit, "offset": offset},
+    }
+
+
+def get_analysis_files_db(
+    session: Session,
+    run_id: str,
+    limit: int = 50,
+    offset: int = 0,
+) -> Optional[dict]:
+    """SQL-level paginated files read path."""
+    run = session.execute(select(AnalysisRun.id).where(AnalysisRun.id == run_id)).scalar_one_or_none()
+    if not run:
+        return None
+
+    query = select(GraphNode).where(GraphNode.run_id == run_id).where(GraphNode.node_type == "file")
+
+    total = session.execute(select(func.count()).select_from(query.subquery())).scalar() or 0
+    rows = session.execute(query.order_by(GraphNode.node_type.nulls_last(), GraphNode.file_path.nulls_last(), GraphNode.start_line.nulls_last(), GraphNode.node_id).offset(offset).limit(limit)).scalars().all()
+
+    files = []
+    for gn in rows:
+        n: dict = {
+            "id": gn.node_id,
+            "type": gn.node_type,
+            "provenance": gn.provenance,
+        }
+        if gn.name is not None:
+            n["name"] = gn.name
+        if gn.file_path is not None:
+            n["file"] = gn.file_path
+        extra = _uj(gn.attributes_json) or {}
+        n.update(extra)
+        files.append(n)
+
+    return {
+        "run_id": run_id,
+        "files": files,
+        "pagination": {"total": total, "limit": limit, "offset": offset},
+    }
+
+
+def get_analysis_graph_db(
+    session: Session,
+    run_id: str,
+    node_type: Optional[str] = None,
+    file_path: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> Optional[dict]:
+    """SQL-level paginated graph read path."""
+    run = session.execute(select(AnalysisRun.id).where(AnalysisRun.id == run_id)).scalar_one_or_none()
+    if not run:
+        return None
+
+    query = select(GraphNode).where(GraphNode.run_id == run_id)
+    if node_type:
+        query = query.where(GraphNode.node_type == node_type)
+    if file_path:
+        query = query.where(GraphNode.file_path == file_path)
+
+    total = session.execute(select(func.count()).select_from(query.subquery())).scalar() or 0
+    nodes_rows = session.execute(query.order_by(GraphNode.node_type.nulls_last(), GraphNode.file_path.nulls_last(), GraphNode.start_line.nulls_last(), GraphNode.node_id).offset(offset).limit(limit)).scalars().all()
+
+    nodes = []
+    node_ids = set()
+    for gn in nodes_rows:
+        n: dict = {
+            "id": gn.node_id,
+            "type": gn.node_type,
+            "provenance": gn.provenance,
+        }
+        if gn.name is not None:
+            n["name"] = gn.name
+        if gn.file_path is not None:
+            n["file"] = gn.file_path
+        if gn.start_line is not None:
+            n["start_line"] = gn.start_line
+        if gn.end_line is not None:
+            n["end_line"] = gn.end_line
+        extra = _uj(gn.attributes_json) or {}
+        n.update(extra)
+        nodes.append(n)
+        node_ids.add(gn.node_id)
+
+    edges = []
+    if node_ids:
+        edge_rows = []
+        seen_edge_ids = set()
+        node_id_list = list(node_ids)
+        for start in range(0, len(node_id_list), 500):
+            batch = node_id_list[start:start + 500]
+            rows = session.execute(select(GraphEdge).where(GraphEdge.run_id == run_id).where(or_(GraphEdge.source.in_(batch), GraphEdge.target.in_(batch)))).scalars().all()
+            for row in rows:
+                if row.id not in seen_edge_ids:
+                    seen_edge_ids.add(row.id)
+                    edge_rows.append(row)
+
+        for ge in edge_rows:
+            e: dict = {
+                "source": ge.source,
+                "target": ge.target,
+                "relation": ge.relation,
+                "confidence": ge.confidence,
+                "provenance": ge.provenance,
+            }
+            extra = _uj(ge.attributes_json) or {}
+            e.update(extra)
+            edges.append(e)
+
+    return {
+        "run_id": run_id,
+        "nodes": nodes,
+        "edges": edges,
+        "pagination": {"total": total, "limit": limit, "offset": offset},
+    }
+
+
+def get_analysis_by_run_id(session: Session, run_id: str) -> Optional[dict]:
+    """Return a specific analysis run by its UUID, or None."""
+    run = session.execute(
+        select(AnalysisRun).where(AnalysisRun.id == run_id)
+    ).scalar_one_or_none()
+    if run is None:
+        return None
+    return _run_to_dict(session, run)
+
+
+def get_all_runs_for_repo(session: Session, repo_url: str) -> List[dict]:
+    """Return all analysis runs for a repo, newest first."""
+    runs = session.execute(
+        select(AnalysisRun)
+        .join(AnalysisRun.snapshot)
+        .join(Snapshot.repository)
+        .where(Repository.repo_url == repo_url)
+        .order_by(AnalysisRun.created_at.desc())
+    ).scalars().all()
+    return [_run_to_dict(session, r) for r in runs]
+
+
+# ---------------------------------------------------------------------------
+# Job Management (S15)
+# ---------------------------------------------------------------------------
+
+STAGE_PROGRESS_MAP = {
+    "queued": 0,
+    "cloning": 15,
+    "parsing": 30,
+    "analyzing": 50,
+    "graph-building": 75,
+    "scoring": 85,
+    "embedding": 95,
+    "completed": 100,
+    "partial": 100,
+    "failed": 100,
+}
+
+ALL_STAGES = [
+    "cloning", "parsing", "analyzing", "graph-building", "scoring", "embedding"
+]
+
+
+def create_job(session: Session, repo_url: str, commit_sha: Optional[str] = None) -> AnalysisJob:
+    """Create a new AnalysisJob and its stage tracking rows in 'queued' status."""
+    job = AnalysisJob(
+        repo_url=repo_url,
+        commit_sha=commit_sha,
+        status="queued",
+        current_stage="queued",
+        progress=0,
+    )
+    session.add(job)
+    session.flush()
+
+    # Pre-populate stage rows
+    for stage_name in ALL_STAGES:
+        st = AnalysisJobStage(
+            job_id=job.id,
+            stage_name=stage_name,
+            status="pending",
+        )
+        session.add(st)
+    session.flush()
+
+    _sync_job_stages_json(session, job)
+    return job
+
+
+def get_job_model(session: Session, job_id: str) -> Optional[AnalysisJob]:
+    """Fetch AnalysisJob ORM model instance by ID."""
+    return session.execute(
+        select(AnalysisJob).where(AnalysisJob.id == job_id)
+    ).scalar_one_or_none()
+
+
+def get_job_dict(session: Session, job_id: str) -> Optional[dict]:
+    """Fetch job by ID and format as a structured dict for API responses."""
+    job = get_job_model(session, job_id)
+    if not job:
+        return None
+    return _job_to_dict(session, job)
+
+
+def get_active_job_for_repo(session: Session, repo_url: str, commit_sha: Optional[str] = None) -> Optional[AnalysisJob]:
+    """Return any active (queued or in-progress) job for a repo/commit if one exists."""
+    stmt = (
+        select(AnalysisJob)
+        .where(AnalysisJob.repo_url == repo_url)
+        .where(AnalysisJob.status.in_(["queued", "cloning", "parsing", "analyzing", "graph-building", "scoring", "embedding"]))
+    )
+    if commit_sha:
+        stmt = stmt.where(AnalysisJob.commit_sha == commit_sha)
+    stmt = stmt.order_by(AnalysisJob.created_at.desc())
+    return session.execute(stmt).scalars().first()
+
+
+
+def find_completed_run_by_sha(session: Session, repo_url: str, commit_sha: str) -> Optional[dict]:
+    """Find a completed analysis run matching repo_url and commit_sha."""
+    run = session.execute(
+        select(AnalysisRun)
+        .join(AnalysisRun.snapshot)
+        .join(Snapshot.repository)
+        .where(Repository.repo_url == repo_url)
+        .where(Snapshot.commit_sha == commit_sha)
+        .where(AnalysisRun.status.in_(["complete", "partial"]))
+        .order_by(AnalysisRun.created_at.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    if run is None:
+        return None
+    return _run_to_dict(session, run)
+
+
+def update_job_stage(
+    session: Session,
+    job_id: str,
+    stage_name: str,
+    stage_status: str,  # running | completed | skipped | failed
+    detail: Optional[str] = None,
+    progress: Optional[int] = None,
+) -> None:
+    """Update job current stage and stage status row."""
+    job = get_job_model(session, job_id)
+    if not job:
+        return
+
+    now = datetime.now(timezone.utc)
+    if job.started_at is None:
+        job.started_at = now
+
+    job.current_stage = stage_name
+    if stage_status in ("running", "completed", "skipped", "failed"):
+        if stage_name in ("cloning", "parsing", "analyzing", "graph-building", "scoring", "embedding"):
+            job.status = stage_name
+
+    prog = progress if progress is not None else STAGE_PROGRESS_MAP.get(stage_name, job.progress)
+    job.progress = max(job.progress, prog)
+    job.updated_at = now
+
+    # Update individual stage record
+    stage_row = session.execute(
+        select(AnalysisJobStage).where(
+            AnalysisJobStage.job_id == job_id,
+            AnalysisJobStage.stage_name == stage_name,
+        )
+    ).scalar_one_or_none()
+
+    if stage_row:
+        stage_row.status = stage_status
+        if detail is not None:
+            stage_row.detail = detail
+        if stage_status == "running" and stage_row.started_at is None:
+            stage_row.started_at = now
+        elif stage_status in ("completed", "skipped", "failed"):
+            if stage_row.started_at is None:
+                stage_row.started_at = now
+            stage_row.completed_at = now
+
+    _sync_job_stages_json(session, job)
+    session.flush()
+
+
+def complete_job(
+    session: Session,
+    job_id: str,
+    run_id: str,
+    status: str = "completed",
+    cache_hit: bool = False,
+) -> None:
+    """Mark job as completed (or partial) linked to run_id."""
+    job = get_job_model(session, job_id)
+    if not job:
+        return
+    now = datetime.now(timezone.utc)
+    job.status = status
+    job.current_stage = status
+    job.progress = 100
+    job.run_id = run_id
+    job.cache_hit = cache_hit
+    job.completed_at = now
+    job.updated_at = now
+
+    # Mark remaining stages completed or skipped
+    for st in job.stages:
+        if st.status in ("pending", "running"):
+            st.status = "completed" if not cache_hit else "completed"
+            if st.started_at is None:
+                st.started_at = now
+            st.completed_at = now
+
+    _sync_job_stages_json(session, job)
+    session.flush()
+
+
+def fail_job(session: Session, job_id: str, error_message: str) -> None:
+    """Mark job as failed with error message."""
+    job = get_job_model(session, job_id)
+    if not job:
+        return
+    now = datetime.now(timezone.utc)
+    job.status = "failed"
+    job.error_message = error_message
+    job.completed_at = now
+    job.updated_at = now
+
+    # Mark current stage failed
+    if job.current_stage:
+        stage_row = session.execute(
+            select(AnalysisJobStage).where(
+                AnalysisJobStage.job_id == job_id,
+                AnalysisJobStage.stage_name == job.current_stage,
+            )
+        ).scalar_one_or_none()
+        if stage_row:
+            stage_row.status = "failed"
+            stage_row.detail = error_message
+            stage_row.completed_at = now
+
+    _sync_job_stages_json(session, job)
+    session.flush()
+
+
+def _sync_job_stages_json(session: Session, job: AnalysisJob) -> None:
+    """Serialize stages list into stages_json on the AnalysisJob model."""
+    stages = session.execute(
+        select(AnalysisJobStage)
+        .where(AnalysisJobStage.job_id == job.id)
+        .order_by(AnalysisJobStage.id)
+    ).scalars().all()
+
+    stages_list = [
+        {
+            "stage_name": s.stage_name,
+            "status": s.status,
+            "detail": s.detail,
+            "started_at": s.started_at.isoformat() if s.started_at else None,
+            "completed_at": s.completed_at.isoformat() if s.completed_at else None,
+        }
+        for s in stages
+    ]
+    job.stages_json = json.dumps(stages_list, sort_keys=True)
+
+
+def _job_to_dict(session: Session, job: AnalysisJob) -> dict:
+    """Format job object to standard dictionary."""
+    stages_data = _uj(job.stages_json) or []
+    return {
+        "job_id": job.id,
+        "repo_url": job.repo_url,
+        "commit_sha": job.commit_sha,
+        "status": job.status,
+        "current_stage": job.current_stage,
+        "progress": job.progress,
+        "cache_hit": job.cache_hit,
+        "error_message": job.error_message,
+        "run_id": job.run_id,
+        "stages": stages_data,
+        "created_at": job.created_at.isoformat() if job.created_at else None,
+        "started_at": job.started_at.isoformat() if job.started_at else None,
+        "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+    }
