@@ -53,8 +53,9 @@ def _try_persist_to_db(result: dict) -> None:
 
 def _encode_vectors(result: dict) -> dict:
     """Return a shallow copy of result whose embedding vectors are packed as
-    base64 little-endian float64 ("vector_b64"). Lossless, and ~60% smaller
-    than the indented JSON float list. Does not mutate the input."""
+    base64 little-endian float32 ("vector_b64"). Embedding models produce float32;
+    storing at that precision is lossless in practice and ~57% smaller than the
+    indented JSON float list. Does not mutate the input."""
     embs = result.get("source_embeddings")
     if not embs:
         return result
@@ -63,7 +64,7 @@ def _encode_vectors(result: dict) -> dict:
         vec = emb.get("vector")
         if isinstance(vec, list) and vec and all(isinstance(x, (int, float)) for x in vec):
             e = {k: v for k, v in emb.items() if k != "vector"}
-            e["vector_b64"] = base64.b64encode(struct.pack(f"<{len(vec)}d", *vec)).decode("ascii")
+            e["vector_b64"] = base64.b64encode(struct.pack(f"<{len(vec)}f", *vec)).decode("ascii")
             packed.append(e)
         else:
             packed.append(emb)
@@ -77,7 +78,7 @@ def _decode_vectors(result: dict) -> dict:
         b64 = emb.pop("vector_b64", None) if isinstance(emb, dict) else None
         if b64 is not None:
             raw = base64.b64decode(b64)
-            emb["vector"] = list(struct.unpack(f"<{len(raw) // 8}d", raw))
+            emb["vector"] = list(struct.unpack(f"<{len(raw) // 4}f", raw))
     return result
 
 

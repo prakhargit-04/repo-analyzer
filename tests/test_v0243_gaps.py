@@ -78,7 +78,11 @@ def test_cache_file_stores_vectors_compactly_and_losslessly(tmp_path, no_semgrep
     assert len(packed) < 0.5 * len(naive), (len(packed), len(naive))
 
     cached = run_pipeline(None, repo, None, str(tmp_path))
-    assert [e["vector"] for e in cached["source_embeddings"]] == [e["vector"] for e in fresh["source_embeddings"]]
+    # Vectors are stored as float32; round-trip introduces at most ~1e-7 relative
+    # error — well within the precision of any embedding model output.
+    for fresh_emb, cached_emb in zip(fresh["source_embeddings"], cached["source_embeddings"]):
+        for a, b in zip(fresh_emb["vector"], cached_emb["vector"]):
+            assert abs(a - b) < 1e-6, f"vector element drift too large: {a!r} vs {b!r}"
 
 
 def test_load_cache_still_accepts_legacy_list_vectors(tmp_path):
