@@ -150,6 +150,23 @@ def get_embedding_provider_info(provider_name: Optional[str] = None) -> tuple[st
     return p_name_clean, "1.0"
 
 
+def embedding_cache_identity(provider_name: Optional[str] = None) -> tuple[str, str, str]:
+    """(provider name, model name, model version) from CONFIGURATION ONLY.
+
+    Used for cache keys: never instantiates a provider (no model download/load).
+    Includes the model name so changing EMBEDDING_MODEL_NAME invalidates the
+    cache, and raises ValueError for an unknown provider exactly like
+    get_embedding_provider() does."""
+    p_name = (provider_name or os.environ.get("EMBEDDING_PROVIDER") or "test").strip().lower()
+    if p_name in ("test", "deterministic", "mock"):
+        return "test-deterministic", "test-deterministic", "1.0"
+    if p_name in _SENTENCE_TRANSFORMER_ALIASES:
+        return "sentence_transformers", os.environ.get("EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2"), "1.0"
+    raise ValueError(
+        f"Unknown EMBEDDING_PROVIDER '{p_name}'. Valid options: 'test', 'sentence_transformers'."
+    )
+
+
 def reset_embedding_provider_cache() -> None:
     """Clear the cached embedding provider instance."""
     global _CACHED_EMBEDDING_PROVIDER, _CACHED_EMBEDDING_KEY

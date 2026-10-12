@@ -12,6 +12,22 @@ PIPELINE_DIR = os.path.join(os.path.dirname(__file__), "..", "pipeline")
 sys.path.insert(0, os.path.abspath(PIPELINE_DIR))
 
 
+HERMETIC_SEMGREP_RULES = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "semgrep_rules", "test-rules.yml")
+)
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_semgrep(request, monkeypatch):
+    """Default suite never needs network: Semgrep runs with pinned local rules.
+    Tests marked `network` (opt-in: pytest -m network) keep the real `auto` config."""
+    if request.node.get_closest_marker("network"):
+        monkeypatch.delenv("SEMGREP_CONFIG", raising=False)
+    else:
+        monkeypatch.setenv("SEMGREP_CONFIG", HERMETIC_SEMGREP_RULES)
+    yield
+
+
 class LocalGitRepo:
     def __init__(self, path: str, commit_sha: str, url: str, initial_commit_sha: str):
         self.path = path

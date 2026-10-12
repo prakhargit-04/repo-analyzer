@@ -31,6 +31,9 @@ from db.store import (
     get_active_job_for_repo,
     find_completed_run_by_sha,
     get_analysis_by_run_id,
+    run_exists,
+    get_run_status_db,
+    get_file_detail_db,
     get_analysis_summary_db,
     get_analysis_graph_db,
     get_analysis_findings_db,
@@ -141,13 +144,17 @@ def submit_analysis(
     if not effective_sha:
         effective_sha = clone.resolve_remote_sha(repo_url)
 
-    # 2. Check cache hit for resolved SHA
-    if effective_sha:
+    # 2. Check cache hit for resolved SHA unless the caller explicitly requests a refresh.
+    if effective_sha and not req.force_refresh:
         cached_run = find_completed_run_by_sha(db, repo_url, effective_sha)
         if cached_run:
             # Immediate cache hit: create job, link run_id, mark completed with cache_hit=True
-            job = create_job(db, repo_url, commit_sha=effective_sha)
-            complete_job(db, job.id, run_id=cached_run["run_id"], status="completed", cache_hit=True)
+            job = create_job(db, repo_url, commit_sha=effective_sha, force_refresh=req.force_refresh)
+            complete_job(
+                db, job.id, run_id=cached_run["run_id"],
+                status="completed" if cached_run.get("analysis_status") == "complete" else "partial",
+                cache_hit=True,
+            )
             db.commit()
             job_data = get_job_dict(db, job.id)
             return job_data
@@ -174,7 +181,7 @@ def submit_analysis(
         )
 
     # 4. Enqueue new analysis job
-    job = create_job(db, repo_url, commit_sha=effective_sha)
+    job = create_job(db, repo_url, commit_sha=effective_sha, force_refresh=req.force_refresh)
     db.commit()
 
     db_url = os.environ.get("DATABASE_URL", "sqlite:///repo_analyzer.db")
@@ -265,20 +272,10 @@ def get_full_analysis(run_id: str, db: Session = Depends(get_db_session)):
 
 @router.get("/analyses/{run_id}/status")
 def get_analysis_run_status(run_id: str, db: Session = Depends(get_db_session)):
-    analysis = get_analysis_by_run_id(db, run_id)
-    if not analysis:
+    run_status = get_run_status_db(db, run_id)
+    if run_status is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Analysis run '{run_id}' not found")
-    return {
-        "run_id": analysis["run_id"],
-        "repository": analysis["repository"],
-        "commit_sha": analysis["commit_sha"],
-        "analysis_status": analysis["analysis_status"],
-        "analyzer_version": analysis["analyzer_version"],
-        "schema_version": analysis["schema_version"],
-        "analyzed_at_utc": analysis["analyzed_at_utc"],
-        "files_analyzed": analysis["files_analyzed"],
-        "languages": analysis["languages"],
-    }
+    return run_status
 
 
 @router.get("/analyses/{run_id}/summary")
@@ -338,15 +335,11 @@ def get_file_detail(
     file_path: str,
     db: Session = Depends(get_db_session),
 ):
-    analysis = get_analysis_by_run_id(db, run_id)
-    if not analysis:
+    detail = get_file_detail_db(db, run_id, file_path)
+    if detail is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Analysis run '{run_id}' not found")
-
-    nodes = analysis.get("knowledge_graph", {}).get("nodes", [])
-    entities = [n for n in nodes if n.get("file") == file_path]
-
-    parse_errors = [pe.get("error") for pe in analysis.get("parse_errors", []) if pe.get("file") == file_path]
-    parse_err = parse_errors[0] if parse_errors else None
+    entities = detail["entities"]
+    parse_err = detail["parse_error"]
 
     # Determine file language
     lang = "unknown"
@@ -429,8 +422,7 @@ def retrieve_source_evidence_post(
     req: RetrievalRequest,
     db: Session = Depends(get_db_session),
 ):
-    analysis = get_analysis_by_run_id(db, run_id)
-    if not analysis:
+    if not run_exists(db, run_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Analysis run '{run_id}' not found")
 
     try:
@@ -446,8 +438,7 @@ def retrieve_source_evidence_get(
     top_k: int = Query(5, ge=1, le=50, description="Maximum number of top matching source chunks to return"),
     db: Session = Depends(get_db_session),
 ):
-    analysis = get_analysis_by_run_id(db, run_id)
-    if not analysis:
+    if not run_exists(db, run_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Analysis run '{run_id}' not found")
 
     try:
@@ -536,8 +527,7 @@ def ask_repository_question_route(
     req: AskRequest,
     db: Session = Depends(get_db_session),
 ):
-    analysis = get_analysis_by_run_id(db, run_id)
-    if not analysis:
+    if not run_exists(db, run_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Analysis run '{run_id}' not found")
 
     try:

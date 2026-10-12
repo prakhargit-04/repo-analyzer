@@ -10,6 +10,27 @@ MAX_CHECKOUT_TIMEOUT = 60  # 1 minute
 
 HEX_SHA_PATTERN = re.compile(r"^[0-9a-fA-F]{7,40}$")
 
+# Applied to EVERY git invocation that touches a repository we did not create.
+#   core.hooksPath=/dev/null        repository hooks never run
+#   protocol.ext.allow=never        no ext:: command transports
+#   http.followRedirects=false      a redirect to another host fails instead of being followed
+#   submodule.recurse=false         submodules are never fetched implicitly
+_HARDENED_GIT_CONFIG = (
+    "-c", "core.hooksPath=/dev/null",
+    "-c", "protocol.ext.allow=never",
+    "-c", "http.followRedirects=false",
+    "-c", "submodule.recurse=false",
+)
+
+
+def _git_env() -> dict:
+    """Environment for git subprocesses: never prompt for credentials."""
+    env = dict(os.environ)
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    env["GIT_ASKPASS"] = "echo"   # a credential helper that returns nothing -> auth fails fast
+    env.pop("SSH_ASKPASS", None)
+    return env
+
 
 def is_safe_repo_url(url: str) -> bool:
     """Validate repository URL to prevent flag injection or unsafe protocols."""
@@ -37,8 +58,7 @@ def resolve_remote_sha(repo_url: str) -> str | None:
 
     cmd = [
         "git",
-        "-c", "core.hooksPath=/dev/null",
-        "-c", "protocol.ext.allow=never",
+        *_HARDENED_GIT_CONFIG,
         "ls-remote",
         "--quiet",
         "--",
@@ -46,7 +66,7 @@ def resolve_remote_sha(repo_url: str) -> str | None:
         "HEAD",
     ]
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=30, env=_git_env())
         if res.returncode == 0 and res.stdout:
             parts = res.stdout.strip().split()
             if parts and HEX_SHA_PATTERN.match(parts[0]):
@@ -55,6 +75,36 @@ def resolve_remote_sha(repo_url: str) -> str | None:
         pass
     return None
 
+
+
+def _redact_url(url: str) -> str:
+    """Remove any user:password@ part so credentials never reach an error message or log."""
+    return re.sub(r"(?<=//)[^/@\s]+@", "***@", url or "")
+
+
+def _clone_failure_reason(exc: BaseException) -> str:
+    """Human-useful, non-leaking reason for a failed clone.
+
+    Never includes the git argv, the destination path, raw stderr, or URL credentials: those
+    reach API clients through the job error_message.
+    """
+    if isinstance(exc, subprocess.TimeoutExpired):
+        return f"git timed out after {int(exc.timeout)} seconds"
+    if isinstance(exc, subprocess.CalledProcessError):
+        stderr = (exc.stderr or "").lower() if isinstance(exc.stderr, str) else ""
+        in_checkout = isinstance(exc.cmd, (list, tuple)) and "checkout" in exc.cmd
+        if "redirect" in stderr or "unable to update url base" in stderr or re.search(r"error: 30[12378]\b", stderr):
+            return "the repository URL redirected and redirects are not followed; use the canonical repository URL"
+        if in_checkout or any(k in stderr for k in ("unknown revision", "not a commit", "bad object", "pathspec")):
+            return "the requested commit was not found in the repository"
+        if any(k in stderr for k in ("not found", "does not appear to be a git repository", "could not read from remote")):
+            return "repository not found or not accessible (private repositories are not supported)"
+        if any(k in stderr for k in ("could not resolve host", "unable to access", "connection", "timed out")):
+            return "the repository host could not be reached"
+        return f"git exited with status {exc.returncode}"
+    if isinstance(exc, RuntimeError):
+        return str(exc)  # raised by this module itself with a fixed, safe message
+    return f"unexpected error ({type(exc).__name__})"
 
 
 def clone_repository(repo_url: str, dest_dir: str, commit_sha: str | None = None) -> str:
@@ -74,28 +124,30 @@ def clone_repository(repo_url: str, dest_dir: str, commit_sha: str | None = None
 
     clone_cmd = [
         "git",
-        "-c", "core.hooksPath=/dev/null",
-        "-c", "protocol.ext.allow=never",
+        *_HARDENED_GIT_CONFIG,
         "clone",
         "--quiet",
-        "--",
-        repo_url,
-        dest_dir,
+        "--no-recurse-submodules",
     ]
+    if not commit_sha:
+        # Only the tip is needed. A pinned SHA may not be the tip, so that case
+        # keeps full history (checkout below would otherwise fail).
+        clone_cmd += ["--depth", "1"]
+    clone_cmd += ["--", repo_url, dest_dir]
 
     try:
-        subprocess.run(clone_cmd, check=True, timeout=MAX_CLONE_TIMEOUT, capture_output=True, text=True)
+        subprocess.run(clone_cmd, check=True, timeout=MAX_CLONE_TIMEOUT, capture_output=True, text=True, env=_git_env())
 
         if commit_sha:
             checkout_cmd = [
                 "git",
                 "-C", dest_dir,
-                "-c", "core.hooksPath=/dev/null",
+                *_HARDENED_GIT_CONFIG,
                 "checkout",
                 "--quiet",
                 commit_sha,
             ]
-            subprocess.run(checkout_cmd, check=True, timeout=MAX_CHECKOUT_TIMEOUT, capture_output=True, text=True)
+            subprocess.run(checkout_cmd, check=True, timeout=MAX_CHECKOUT_TIMEOUT, capture_output=True, text=True, env=_git_env())
 
         resolved = subprocess.run(
             ["git", "-C", dest_dir, "rev-parse", "HEAD"],
@@ -131,4 +183,6 @@ def clone_repository(repo_url: str, dest_dir: str, commit_sha: str | None = None
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, Exception) as exc:
         if os.path.exists(dest_dir):
             shutil.rmtree(dest_dir, ignore_errors=True)
-        raise RuntimeError(f"Failed to clone repository '{repo_url}': {exc}") from exc
+        raise RuntimeError(
+            f"Failed to clone repository '{_redact_url(repo_url)}': {_clone_failure_reason(exc)}"
+        ) from None

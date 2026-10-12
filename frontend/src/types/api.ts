@@ -380,6 +380,8 @@ export interface components {
              * @example 00e7d87c7353b1ffecc4cd55f19acfffedd5233e
              */
             commit_sha?: string | null;
+            /** Force a fresh analysis, bypassing database and file caches */
+            force_refresh?: boolean;
         };
         /** ValidationError */
         ValidationError: {

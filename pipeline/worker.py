@@ -60,6 +60,7 @@ def process_job_task(job_id: str, db_url: str, cache_dir: str) -> None:
                 return
             repo_url = job.repo_url
             commit_sha = job.commit_sha
+            force_refresh = bool(job.force_refresh)
         # Session is now closed — no long-held lock during pipeline execution.
 
         # stage_cb always uses its own short-lived session so callbacks never
@@ -80,6 +81,7 @@ def process_job_task(job_id: str, db_url: str, cache_dir: str) -> None:
                 cache_dir=cache_dir,
                 stage_callback=stage_cb,
                 persist_to_db=False,
+                use_cache=not force_refresh,
             )
         except Exception as exc:
             pipeline_error = exc
@@ -89,13 +91,16 @@ def process_job_task(job_id: str, db_url: str, cache_dir: str) -> None:
         # contaminates the INSERT transaction in Phase 3b (prevents SQLite WAL stale-snapshot
         # UNIQUE constraint violations on Windows and other multi-engine setups).
         cached_run_id: Optional[str] = None
-        if result is not None and pipeline_error is None:
+        if result is not None and pipeline_error is None and not force_refresh:
             res_sha = result.get("commit_sha") or commit_sha
             if res_sha:
                 try:
                     with SessionLocal() as check_session:
                         found = find_completed_run_by_sha(check_session, repo_url, res_sha)
-                        if found:
+                        # Reuse an existing run only if it is at least as good as the fresh result;
+                        # a better fresh result (e.g. a recovered analyzer) must be persisted.
+                        _rank = {"complete": 2, "partial": 1}
+                        if found and _rank.get(found.get("analysis_status"), 0) >= _rank.get(result.get("analysis_status"), 0):
                             cached_run_id = found["run_id"]
                 except Exception:
                     pass  # If the check fails, fall through to persist_analysis in 3b.

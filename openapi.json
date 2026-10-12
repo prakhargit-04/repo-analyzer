@@ -3,7 +3,7 @@
   "info": {
     "title": "Repo Analyzer API",
     "description": "Language-agnostic repository analysis and knowledge-graph engine backend",
-    "version": "0.24.2"
+    "version": "0.24.7"
   },
   "paths": {
     "/api/v1/health": {
@@ -1942,6 +1942,12 @@
             "title": "Commit Sha",
             "description": "Optional commit SHA to analyze",
             "example": "00e7d87c7353b1ffecc4cd55f19acfffedd5233e"
+          },
+          "force_refresh": {
+            "type": "boolean",
+            "title": "Force Refresh",
+            "description": "Force a fresh analysis, bypassing database and file caches",
+            "default": false
           }
         },
         "type": "object",

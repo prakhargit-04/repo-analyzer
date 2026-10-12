@@ -1,5 +1,6 @@
 "use client";
 
+import { PanelError } from "@/components/ui/PanelError";
 import React, { useState, useEffect } from "react";
 import { askRepositoryQuestion, AskResponse, CitationItem, getAiStatus } from "@/lib/api";
 import { getAiBadgeState, AiBadgeState } from "@/lib/ai-status-helper";
@@ -16,7 +17,7 @@ export function RepositoryAssistantPanel({
   const [question, setQuestion] = useState("");
   const [topK, setTopK] = useState(5);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [response, setResponse] = useState<AskResponse | null>(null);
   const [aiState, setAiState] = useState<AiBadgeState>(() => getAiBadgeState(null));
 
@@ -37,8 +38,7 @@ export function RepositoryAssistantPanel({
       const res = await askRepositoryQuestion(runId, question.trim(), topK);
       setResponse(res);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to generate repository-grounded answer";
-      setError(msg);
+      setError(err ?? "Failed to generate repository-grounded answer");
     } finally {
       setLoading(false);
     }
@@ -122,11 +122,7 @@ export function RepositoryAssistantPanel({
         </button>
       </form>
 
-      {error && (
-        <div className="bg-red-950/60 border border-red-800 text-red-300 text-xs p-3 rounded-lg">
-          {error}
-        </div>
-      )}
+      <PanelError error={error} />
 
       {response && (
         <div className="space-y-4 pt-2 border-t border-slate-800">

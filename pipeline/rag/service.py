@@ -9,7 +9,7 @@ import sys
 from typing import Any, Dict, Optional
 from sqlalchemy.orm import Session
 
-from db.store import retrieve_similar_chunks, get_analysis_by_run_id
+from db.store import retrieve_similar_chunks, get_run_status_db
 from rag.llm import BaseLLMProvider, get_llm_provider, LLMError, LLMResponseError
 from rag.context_builder import build_evidence_context, build_rag_user_prompt, SYSTEM_GROUNDING_PROMPT
 from rag.citation_validator import validate_citations
@@ -53,7 +53,7 @@ def answer_repository_question(
         }
 
     # 1. Resolve analysis run
-    analysis = get_analysis_by_run_id(session, run_id)
+    analysis = get_run_status_db(session, run_id)
     if not analysis:
         return {
             "question": clean_q,

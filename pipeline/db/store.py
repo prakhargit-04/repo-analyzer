@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -47,8 +48,23 @@ from .models import (
 )
 
 
+def _add_reduced_set_fields(hs_dict: dict) -> None:
+    """The DB stores sub-scores but not the reduced-set disclosure; recompute it from them so the
+    API reports the same components_scored / reduced_component_set / note as the pipeline result."""
+    from health_score import reduced_set_summary, _SCORE_NOTE_TAIL
+    info = reduced_set_summary(hs_dict.get("sub_scores") or {})
+    hs_dict["components_scored"] = info["components_scored"]
+    hs_dict["reduced_component_set"] = info["reduced_component_set"]
+    hs_dict["note"] = info["reduced_note"] + _SCORE_NOTE_TAIL
+
+
 class EmbeddingMismatchError(Exception):
     """Stored embeddings cannot be compared with the active provider."""
+
+
+class EmbeddingsUnavailableError(EmbeddingMismatchError):
+    """The run has source chunks but no embeddings at all (embedding stage failed or was skipped).
+    Subclass of EmbeddingMismatchError so every existing handler maps it to HTTP 409."""
 
 
 def _graph_node_dict(gn: GraphNode) -> dict:
@@ -139,6 +155,11 @@ def persist_analysis(session: Session, result_dict: dict) -> str:
     commit_sha_val: Optional[str] = result_dict.get("commit_sha")
     cache_key_basis_val: Optional[str] = result_dict.get("cache_key_basis")
 
+    # Persist the effective configuration used by this worker. This assumes the
+    # process configuration remains stable from pipeline execution through persistence.
+    from util import analysis_config_fingerprint
+    config_fingerprint = analysis_config_fingerprint()
+
     # Upsert repository
     repo = _get_or_create_repo(session, repo_url)
 
@@ -175,6 +196,7 @@ def persist_analysis(session: Session, result_dict: dict) -> str:
         schema_version=result_dict.get("schema_version", ""),
         cache_schema_version=result_dict.get("cache_schema_version", ""),
         analyzer_version=result_dict.get("analyzer_version", ""),
+        config_fingerprint=config_fingerprint,
         languages=_j(result_dict.get("languages", [])),
         files_analyzed=result_dict.get("files_analyzed", 0),
         parse_errors_json=_j(result_dict.get("parse_errors", [])),
@@ -330,6 +352,7 @@ def persist_analysis(session: Session, result_dict: dict) -> str:
             weights_renormalized=bool(hs_dict.get("weights_renormalized", False)),
             missing_components_json=_j(hs_dict.get("missing_components")),
             formula=hs_dict.get("formula"),
+            formula_version=hs_dict.get("formula_version"),
             scope_policy=hs_dict.get("scope_policy"),
         )
         session.add(hs)
@@ -534,6 +557,15 @@ def retrieve_similar_chunks(
         any_emb = session.execute(
             select(SourceEmbedding).where(SourceEmbedding.run_id == run_id).limit(1)
         ).scalar_one_or_none()
+        if not any_emb:
+            n_chunks = session.execute(
+                select(func.count()).select_from(SourceChunk).where(SourceChunk.run_id == run_id)
+            ).scalar() or 0
+            if n_chunks > 0:
+                raise EmbeddingsUnavailableError(
+                    "No embeddings are available for this analysis run (the embedding stage failed or was skipped), "
+                    "so semantic search cannot be answered. Re-run the analysis once the embedding provider is available."
+                )
         if any_emb:
             raise EmbeddingMismatchError(f"Incompatible embedding provider or dimension. Stored embeddings do not match active provider '{active_provider.name}' ({query_dim}d). Please re-run analysis with current embedding provider.")
 
@@ -709,10 +741,12 @@ def _run_to_dict(session: Session, run: AnalysisRun) -> dict:
             "component_statuses": _uj(hs.component_statuses_json) or {},
             "weights_used": _uj(hs.weights_used_json) or {},
             "weights_renormalized": hs.weights_renormalized,
+            "formula_version": hs.formula_version,
             "missing_components": _uj(hs.missing_components_json) or [],
             "formula": hs.formula,
             "scope_policy": hs.scope_policy,
         }
+        _add_reduced_set_fields(hs_dict)
 
     return {
         "run_id": run.id,
@@ -803,10 +837,12 @@ def get_analysis_summary_db(session: Session, run_id: str) -> Optional[dict]:
             "component_statuses": _uj(hs.component_statuses_json) or {},
             "weights_used": _uj(hs.weights_used_json) or {},
             "weights_renormalized": hs.weights_renormalized,
+            "formula_version": hs.formula_version,
             "missing_components": _uj(hs.missing_components_json) or [],
             "formula": hs.formula,
             "scope_policy": hs.scope_policy,
         }
+        _add_reduced_set_fields(hs_dict)
 
     kg_summary = _uj(run.knowledge_graph_summary_json)
     if kg_summary is None:
@@ -830,6 +866,64 @@ def get_analysis_summary_db(session: Session, run_id: str) -> Optional[dict]:
         "files_analyzed": run.files_analyzed,
         "languages": _uj(run.languages) or [],
     }
+
+
+def run_exists(session: Session, run_id: str) -> bool:
+    """Cheap existence check (one indexed primary-key lookup). Use this instead of
+    get_analysis_by_run_id() when only a 404 decision is needed."""
+    return session.execute(
+        select(AnalysisRun.id).where(AnalysisRun.id == run_id)
+    ).scalar_one_or_none() is not None
+
+
+def get_run_status_db(session: Session, run_id: str) -> Optional[dict]:
+    """Run-level status fields without loading graph nodes/edges/findings."""
+    run = session.execute(select(AnalysisRun).where(AnalysisRun.id == run_id)).scalar_one_or_none()
+    if run is None:
+        return None
+    snap = run.snapshot
+    repo = snap.repository
+    return {
+        "run_id": run.id,
+        "repository": repo.repo_url,
+        "commit_sha": snap.commit_sha,
+        "analysis_status": run.analysis_status,
+        "analyzer_version": run.analyzer_version,
+        "schema_version": run.schema_version,
+        "analyzed_at_utc": run.analyzed_at_utc.isoformat() if run.analyzed_at_utc else None,
+        "files_analyzed": run.files_analyzed,
+        "languages": _uj(run.languages) or [],
+    }
+
+
+def get_file_detail_db(session: Session, run_id: str, file_path: str) -> Optional[dict]:
+    """Entities (graph nodes) for one file, plus its parse error, via SQL."""
+    run = session.execute(
+        select(AnalysisRun.id, AnalysisRun.parse_errors_json).where(AnalysisRun.id == run_id)
+    ).first()
+    if run is None:
+        return None
+    rows = session.execute(
+        select(GraphNode)
+        .where(GraphNode.run_id == run_id)
+        .where(GraphNode.file_path == file_path)
+        .order_by(GraphNode.start_line.nulls_last(), GraphNode.node_id)
+    ).scalars().all()
+    entities = []
+    for gn in rows:
+        n: dict = {"id": gn.node_id, "type": gn.node_type, "provenance": gn.provenance}
+        if gn.name is not None:
+            n["name"] = gn.name
+        if gn.file_path is not None:
+            n["file"] = gn.file_path
+        if gn.start_line is not None:
+            n["start_line"] = gn.start_line
+        if gn.end_line is not None:
+            n["end_line"] = gn.end_line
+        n.update(_uj(gn.attributes_json) or {})
+        entities.append(n)
+    errors = [pe.get("error") for pe in (_uj(run[1]) or []) if pe.get("file") == file_path]
+    return {"entities": entities, "parse_error": errors[0] if errors else None}
 
 
 def get_analysis_findings_db(
@@ -1019,11 +1113,17 @@ ALL_STAGES = [
 ]
 
 
-def create_job(session: Session, repo_url: str, commit_sha: Optional[str] = None) -> AnalysisJob:
+def create_job(
+    session: Session,
+    repo_url: str,
+    commit_sha: Optional[str] = None,
+    force_refresh: bool = False,
+) -> AnalysisJob:
     """Create a new AnalysisJob and its stage tracking rows in 'queued' status."""
     job = AnalysisJob(
         repo_url=repo_url,
         commit_sha=commit_sha,
+        force_refresh=force_refresh,
         status="queued",
         current_stage="queued",
         progress=0,
@@ -1074,21 +1174,76 @@ def get_active_job_for_repo(session: Session, repo_url: str, commit_sha: Optiona
 
 
 
+def _run_lacks_embeddings(session: Session, run_id: str) -> bool:
+    """True when the run has source chunks but zero embeddings (embedding stage failed/skipped)."""
+    n_chunks = session.execute(
+        select(func.count()).select_from(SourceChunk).where(SourceChunk.run_id == run_id)
+    ).scalar() or 0
+    if n_chunks == 0:
+        return False
+    n_emb = session.execute(
+        select(func.count()).select_from(SourceEmbedding).where(SourceEmbedding.run_id == run_id)
+    ).scalar() or 0
+    return n_emb == 0
+
+
+def _run_embeddings_incompatible(session: Session, run_id: str, active_provider: Optional[str], pipeline_version: str) -> bool:
+    """Redundant row-level guard for provider and embedding-pipeline incompatibility.
+
+    The complete provider/model/version identity is enforced by the analysis configuration
+    fingerprint before this helper is reached; this check remains as a defensive guard.
+    """
+    row = session.execute(
+        select(SourceEmbedding.model_name, SourceEmbedding.pipeline_version)
+        .where(SourceEmbedding.run_id == run_id)
+        .limit(1)
+    ).first()
+    if row is None:
+        return False
+    if active_provider is not None and row[0] != active_provider:
+        return True
+    return row[1] != pipeline_version
+
+
 def find_completed_run_by_sha(session: Session, repo_url: str, commit_sha: str) -> Optional[dict]:
-    """Find a completed analysis run matching repo_url and commit_sha."""
-    run = session.execute(
+    """Find a run for repo+commit only when its complete config fingerprint matches.
+
+    Legacy rows with NULL fingerprints are intentionally not reusable: the next submission
+    recomputes them once. Existing status preference and embedding compatibility checks remain
+    as defensive, redundant guards.
+    """
+    from sqlalchemy import case
+    from util import ANALYZER_VERSION, CACHE_SCHEMA_VERSION, analysis_config_fingerprint
+    from embeddings import EMBEDDING_PIPELINE_VERSION, embedding_cache_identity
+
+    # Compute once per lookup. Unknown providers preserve the old behavior: no stored run
+    # can be asserted compatible, but the lookup itself remains safe.
+    try:
+        current_fingerprint = analysis_config_fingerprint()
+        active_provider: Optional[str] = embedding_cache_identity()[0]
+    except ValueError:
+        return None
+
+    candidates = session.execute(
         select(AnalysisRun)
         .join(AnalysisRun.snapshot)
         .join(Snapshot.repository)
         .where(Repository.repo_url == repo_url)
         .where(Snapshot.commit_sha == commit_sha)
         .where(AnalysisRun.status.in_(["complete", "partial"]))
-        .order_by(AnalysisRun.created_at.desc())
-        .limit(1)
-    ).scalar_one_or_none()
-    if run is None:
-        return None
-    return _run_to_dict(session, run)
+        .where(AnalysisRun.analyzer_version == ANALYZER_VERSION)
+        .where(AnalysisRun.cache_schema_version == CACHE_SCHEMA_VERSION)
+        .where(AnalysisRun.config_fingerprint == current_fingerprint)
+        .order_by(case((AnalysisRun.status == "complete", 0), else_=1), AnalysisRun.created_at.desc())
+        .limit(20)
+    ).scalars().all()
+    for run in candidates:
+        if _run_lacks_embeddings(session, run.id):
+            continue
+        if _run_embeddings_incompatible(session, run.id, active_provider, EMBEDDING_PIPELINE_VERSION):
+            continue
+        return _run_to_dict(session, run)
+    return None
 
 
 def update_job_stage(

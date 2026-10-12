@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 class SubmitAnalysisRequest(BaseModel):
     repo_url: str = Field(..., description="HTTPS GitHub repository URL (https://github.com/<owner>/<repo>)", json_schema_extra={"example": "https://github.com/pytest-dev/iniconfig"})
     commit_sha: Optional[str] = Field(None, description="Optional commit SHA to analyze", json_schema_extra={"example": "00e7d87c7353b1ffecc4cd55f19acfffedd5233e"})
+    force_refresh: bool = Field(False, strict=True, description="Force a fresh analysis, bypassing database and file caches")
 
 
 

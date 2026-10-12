@@ -1,5 +1,6 @@
 "use client";
 
+import { PanelError } from "@/components/ui/PanelError";
 import React, { useState, useEffect } from "react";
 
 import { retrieveSourceChunks, RetrievalResponse, RetrievalResultItem, getAiStatus } from "@/lib/api";
@@ -13,7 +14,7 @@ export function SemanticSearchPanel({ runId }: SemanticSearchPanelProps) {
   const [query, setQuery] = useState("");
   const [topK, setTopK] = useState(5);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [response, setResponse] = useState<RetrievalResponse | null>(null);
   const [aiState, setAiState] = useState<AiBadgeState>(() => getAiBadgeState(null));
 
@@ -34,8 +35,7 @@ export function SemanticSearchPanel({ runId }: SemanticSearchPanelProps) {
       const res = await retrieveSourceChunks(runId, query.trim(), topK);
       setResponse(res);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to retrieve source chunks";
-      setError(msg);
+      setError(err ?? "Failed to retrieve source chunks");
     } finally {
       setLoading(false);
     }
@@ -119,11 +119,7 @@ export function SemanticSearchPanel({ runId }: SemanticSearchPanelProps) {
         </button>
       </form>
 
-      {error && (
-        <div className="bg-red-950/60 border border-red-800 text-red-300 text-xs p-3 rounded-lg">
-          {error}
-        </div>
-      )}
+      <PanelError error={error} />
 
       {response && (
         <div className="space-y-3 pt-2">

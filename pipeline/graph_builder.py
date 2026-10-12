@@ -15,7 +15,11 @@ Layer 4 (findings)    : file / function -> static analysis findings (`has_findin
 from __future__ import annotations
 import os
 from collections import defaultdict
+from typing import TYPE_CHECKING
 import networkx as nx
+
+if TYPE_CHECKING:  # annotation-only; avoids a runtime import cycle
+    from parse_python import FunctionNode, ImportEdge
 
 
 def _normalize_path(p: str) -> str:
@@ -232,7 +236,6 @@ def build_graph(parse_results: list, static_analysis: dict | None = None) -> nx.
         for raw_call in fn.calls:
             resolved_target = None
             resolved_confidence = None
-            resolved_reason = None
             resolved_provenance = "graph_builder:call_resolution_heuristic"
 
             raw_strip = raw_call.strip()

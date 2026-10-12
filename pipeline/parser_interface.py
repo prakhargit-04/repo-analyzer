@@ -14,7 +14,6 @@ Extension Guide for S9 (Java) and S10 (JavaScript/TypeScript):
 from __future__ import annotations
 import os
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 
 # Re-export / import core parse result data models
@@ -25,6 +24,15 @@ from parse_python import (
     FileParseResult,
     PROVENANCE as PYTHON_PROVENANCE,
 )
+
+# Re-exported for backward compatibility: tests and callers import these names
+# from parser_interface. Listing them in __all__ marks them as intentional.
+__all__ = [
+    "FunctionNode", "ClassNode", "ImportEdge", "FileParseResult", "PYTHON_PROVENANCE",
+    "BaseParser", "PythonParser", "JavaParser", "JavaScriptParser", "TypeScriptParser",
+    "ParserRegistry", "GLOBAL_PARSER_REGISTRY",
+    "parse_repository", "parse_file",
+]
 
 
 class BaseParser(ABC):

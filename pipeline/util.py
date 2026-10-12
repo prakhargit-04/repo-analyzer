@@ -23,7 +23,7 @@ IGNORED_SNAPSHOT_DIRS = {".git", "__pycache__", ".venv", "venv", "node_modules",
 # can never be served as if it reflects the fixed code. Snapshot identity
 # alone is not enough for this: the repo content didn't change, the
 # analyzer did.
-CACHE_SCHEMA_VERSION = "v5"  # bumped: Session 24 Semgrep penalty & schema updates
+CACHE_SCHEMA_VERSION = "v6"  # v6 (0.24.3): compact base64 embedding vectors in cache file; model name in cache key; health-score reduced-set fields
 SCHEMA_VERSION = "1.0.0"
 from version import APP_VERSION
 ANALYZER_VERSION = APP_VERSION
@@ -116,19 +116,58 @@ def resolve_snapshot_id(repo_root: str, is_fresh_clone: bool, git_sha: str | Non
     return f"content-sha256:{hasher.hexdigest()}"
 
 
-def build_cache_key(snapshot_id: str) -> str:
+def semgrep_ruleset_identity() -> str:
+    """Identity of the Semgrep rules in force, for the cache key (config only; never runs Semgrep).
+
+    'auto' (also the unset default) -> "auto". A local rules file/directory -> a hash of its CONTENT, so
+    editing the rules invalidates the cache while the same rules at another path do not.
     """
-    The repository snapshot alone is an insufficient cache key: it says
-    nothing about whether the *analyzer's own behavior*, *source chunker*, or
-    *embedding provider* changed since the cached result was written. Folding in
-    schema, analyzer, chunker, and embedding version strings invalidates old cache entries.
-    Derives key from configuration only without instantiating ML models.
+    raw = (os.environ.get("SEMGREP_CONFIG") or "").strip()
+    if raw == "" or raw.lower() == "auto":
+        return "auto"
+    path = Path(raw)
+    digest = hashlib.sha256()
+    try:
+        if path.is_file():
+            digest.update(path.read_bytes())
+        elif path.is_dir():
+            for f in sorted(x for x in path.rglob("*") if x.is_file()):
+                digest.update(str(f.relative_to(path)).encode("utf-8") + b"\0" + f.read_bytes() + b"\0")
+        else:
+            return "local:missing"
+    except OSError:
+        return "local:unreadable"
+    return "local:" + digest.hexdigest()
+
+
+def analysis_config_fingerprint() -> str:
+    """Return a deterministic SHA-256 fingerprint for every output-affecting setting.
+
+    This function reads configuration only. It never instantiates an embedding model
+    or invokes Semgrep. Unknown EMBEDDING_PROVIDER values preserve the ValueError
+    behavior of embedding_cache_identity(), as build_cache_key did previously.
     """
     from chunker import SOURCE_CHUNKER_VERSION
-    from embeddings import EMBEDDING_PIPELINE_VERSION, get_embedding_provider_info
-    p_name, p_version = get_embedding_provider_info()
-    raw = f"{CACHE_SCHEMA_VERSION}\n{ANALYZER_VERSION}\n{SOURCE_CHUNKER_VERSION}\n{EMBEDDING_PIPELINE_VERSION}\n{p_name}\n{p_version}\n{snapshot_id}"
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    from embeddings import EMBEDDING_PIPELINE_VERSION, embedding_cache_identity
+
+    provider_name, model_name, provider_version = embedding_cache_identity()
+    components = (
+        CACHE_SCHEMA_VERSION,
+        ANALYZER_VERSION,
+        SOURCE_CHUNKER_VERSION,
+        EMBEDDING_PIPELINE_VERSION,
+        provider_name,
+        model_name,
+        provider_version,
+        semgrep_ruleset_identity(),
+    )
+    return hashlib.sha256("\n".join(components).encode("utf-8")).hexdigest()
+
+
+def build_cache_key(snapshot_id: str) -> str:
+    """Build the file-cache key from the shared configuration fingerprint and snapshot."""
+    fingerprint = analysis_config_fingerprint()
+    return hashlib.sha256(f"{fingerprint}\n{snapshot_id}".encode("utf-8")).hexdigest()
 
 
 

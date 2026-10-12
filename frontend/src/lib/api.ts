@@ -1,3 +1,4 @@
+import { ApiError, parseRetryAfter } from "./api-errors";
 import { components } from "@/types/api";
 
 export type SubmitAnalysisRequest = components["schemas"]["SubmitAnalysisRequest"];
@@ -57,6 +58,12 @@ export interface HealthScoreData {
   weights_renormalized?: boolean;
   /** Components absent from the score due to analyzer failure / unsupported language */
   missing_components?: string[];
+  /** Components that contributed a numeric sub-score (0.24.3+, fresh scores only) */
+  components_scored?: string[];
+  /** true when fewer components were scored than the scheme defines (0.24.3+) */
+  reduced_component_set?: boolean;
+  /** Scoring-rules identifier (0.24.5+); null/absent on older rows. Never compare across versions. */
+  formula_version?: string | null;
   formula?: string | null;
   note?: string | null;
   scope_policy?: string | null;
@@ -142,7 +149,7 @@ async function handleResponse<T>(res: Response): Promise<T> {
     } catch {
       // Use fallback errorDetail
     }
-    throw new Error(errorDetail);
+    throw new ApiError(res.status, errorDetail, parseRetryAfter(res.headers?.get?.("Retry-After")));
   }
   return res.json() as Promise<T>;
 }

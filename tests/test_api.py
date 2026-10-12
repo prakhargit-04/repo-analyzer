@@ -210,10 +210,14 @@ def test_cache_hit_short_circuit(temp_db_and_client):
     from pipeline.db.engine import get_session_factory
     SessionLocal = get_session_factory(engine)
 
+    # v0.24.6: a run is reusable only if produced by the CURRENT analyzer/cache schema, so this fixture
+    # must carry the current versions (it previously used stale ones and still expected a cache hit).
+    from pipeline.util import ANALYZER_VERSION, CACHE_SCHEMA_VERSION
+
     canonical_data = {
         "schema_version": "1.0.0",
-        "cache_schema_version": "v1.0.0",
-        "analyzer_version": "0.15.0",
+        "cache_schema_version": CACHE_SCHEMA_VERSION,
+        "analyzer_version": ANALYZER_VERSION,
         "repository": test_url,
         "commit_sha": test_sha,
         "cache_snapshot_id": test_sha,

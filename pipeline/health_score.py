@@ -66,6 +66,15 @@ def _lizard_cc_to_points(cc: int) -> float:
     return 10.0
 
 
+# Identifies the scoring RULES (component set, weights, per-finding penalty
+# scales, Lizard fallback). Bump it whenever a change can alter a score for an
+# unchanged repository, and never compare scores across different versions.
+#   2.1  six components (complexity .25, maintainability .25, security .20,
+#        sast .15, secrets .10, vulnerabilities .05); Semgrep ERROR 15 /
+#        WARNING 7 / INFO 2; Lizard-derived complexity when Radon is unsupported.
+HEALTH_FORMULA_VERSION = "2.1"
+
+
 def _complexity_subscore(block: dict, lizard_block: Optional[dict] = None) -> Optional[float]:
     if block["status"] not in VALID_COMPONENT_STATUSES:
         raise ValueError(f"Unknown analysis status: {block['status']!r}")
@@ -147,6 +156,28 @@ def _determine_overall_status(component_statuses: dict, available: dict) -> str:
     return "partial"
 
 
+_SCORE_NOTE_TAIL = (
+    "Call-graph resolution confidence is reported separately (graph_builder.graph_summary) and intentionally NOT blended into this score. "
+    "Lizard complexity is informational only and excluded from scoring to prevent double-counting with Radon CC. "
+    "'status' reflects whether EVERY scoring component fully succeeded."
+)
+
+
+def reduced_set_summary(sub_scores: dict) -> dict:
+    """Disclosure fields derived ONLY from the sub-scores, so they can be recomputed from a
+    persisted score (the DB does not store them). Single source of truth for the pipeline and the API."""
+    scored = [k for k, v in sub_scores.items() if v is not None]
+    missing = [k for k, v in sub_scores.items() if v is None]
+    reduced = len(scored) < len(sub_scores)
+    note = ""
+    if reduced and scored:
+        note = (
+            f"Score computed from a reduced component set: {len(scored)} of {len(sub_scores)} "
+            f"components (missing: {', '.join(missing)}); weights renormalized over the components scored. "
+        )
+    return {"components_scored": scored, "reduced_component_set": reduced, "reduced_note": note}
+
+
 def compute_health_score(analysis: dict) -> dict:
     # Determine whether analysis contains new v2 analyzers or is legacy v1
     has_v2_keys = any(
@@ -195,6 +226,16 @@ def compute_health_score(analysis: dict) -> dict:
 
     informational_analyzers = ["lizard_complexity"] if "lizard_complexity" in analysis else []
 
+    components_scored = [k for k in subs if subs[k] is not None]
+    reduced = len(components_scored) < len(subs)
+    if reduced:
+        reduced_note = (
+            f"Score computed from a reduced component set: {len(components_scored)} of {len(subs)} "
+            f"components (missing: {', '.join(missing)}); weights renormalized over the components scored. "
+        )
+    else:
+        reduced_note = ""
+
     if not available:
         return {
             "composite_health_score": None,
@@ -208,7 +249,10 @@ def compute_health_score(analysis: dict) -> dict:
             "informational_analyzers": informational_analyzers,
             "reason": "All underlying scoring analysis tools failed or were unavailable; no health score can be computed from zero data.",
             "scope_policy": analysis.get("scope_policy", "production_code_only"),
-            "note": "Informational analyzers (such as lizard_complexity) are captured separately and do not contribute to scoring calculation.",
+            "formula_version": HEALTH_FORMULA_VERSION,
+            "components_scored": [],
+            "reduced_component_set": True,
+            "note": "No score computed: 0 of " + str(len(subs)) + " components available. Informational analyzers (such as lizard_complexity) are captured separately and do not contribute to scoring calculation.",
         }
 
     weight_sum = sum(weights_config[k] for k in available)
@@ -226,6 +270,9 @@ def compute_health_score(analysis: dict) -> dict:
         "formula": "Weighted average of available sub-scores (complexity: 0.25, maintainability: 0.25, security: 0.20, sast: 0.15, secrets: 0.10, vulnerabilities: 0.05); weights renormalized to sum to 1.0 if any component is unavailable/failed/unsupported (never treated as 0 or 100).",
         "informational_analyzers": informational_analyzers,
         "scope_policy": analysis.get("scope_policy", "production_code_only"),
-        "note": "Call-graph resolution confidence is reported separately (graph_builder.graph_summary) and intentionally NOT blended into this score. Lizard complexity is informational only and excluded from scoring to prevent double-counting with Radon CC. 'status' reflects whether EVERY scoring component fully succeeded.",
+        "formula_version": HEALTH_FORMULA_VERSION,
+        "components_scored": components_scored,
+        "reduced_component_set": reduced,
+        "note": reduced_note + _SCORE_NOTE_TAIL,
     }
 

@@ -30,10 +30,13 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
-          python -m pip install pytest pytest-timeout
+          python -m pip install pytest pytest-timeout pyflakes
 
       - name: Check repo hygiene
         run: python scripts/check_repo_hygiene.py
+
+      - name: Lint core pipeline modules (pyflakes)
+        run: python -m pyflakes pipeline/main.py pipeline/parser_interface.py pipeline/graph_builder.py
 
       - name: Run deterministic backend test suite
         run: python -m pytest tests/ -q --timeout=120 --durations=20 --tb=short

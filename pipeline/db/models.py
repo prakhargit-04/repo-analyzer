@@ -14,7 +14,8 @@ Design principles:
   4. Partial/failed runs are first-class: analysis_runs.status can be
      "pending" | "complete" | "partial" | "failed".
   5. All version strings (schema_version, analyzer_version, cache_schema_version)
-     are stored on analysis_runs for full provenance.
+     and the nullable configuration fingerprint are stored on analysis_runs.
+     Legacy rows with no fingerprint are intentionally not cache-reusable.
   6. SourceChunk (S19) and SourceEmbedding (S20) are linked to analysis_runs.
      Vector retrieval is a linear cosine-similarity scan over JSON-serialised
      vectors (no pgvector / ANN index). Run-scoped to enforce repo+SHA isolation.
@@ -54,6 +55,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -147,6 +149,8 @@ class AnalysisRun(Base):
     schema_version: Mapped[str] = mapped_column(String(32), nullable=False, default="")
     cache_schema_version: Mapped[str] = mapped_column(String(32), nullable=False, default="")
     analyzer_version: Mapped[str] = mapped_column(String(32), nullable=False, default="")
+    # Fingerprint of the complete output-affecting analysis configuration; NULL for legacy runs.
+    config_fingerprint: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     # Languages detected in this run
     languages: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON array as text
     files_analyzed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -396,6 +400,8 @@ class HealthScore(Base):
     weights_renormalized: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     missing_components_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     formula: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # 0007: scoring-rules identifier (health_score.HEALTH_FORMULA_VERSION). NULL on legacy rows.
+    formula_version: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
     scope_policy: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now_utc
@@ -425,6 +431,7 @@ class AnalysisJob(Base):
     current_stage: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
     progress: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     cache_hit: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    force_refresh: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     run_id: Mapped[Optional[str]] = mapped_column(
         String(36), ForeignKey("analysis_runs.id", ondelete="SET NULL"), nullable=True, index=True

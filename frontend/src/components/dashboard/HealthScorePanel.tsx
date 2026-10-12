@@ -100,6 +100,19 @@ export function HealthScorePanel({
         </div>
       )}
 
+      {/* Reduced-component-set notice: the composite is NOT over every component */}
+      {(healthScore.reduced_component_set ?? missingComponents.length > 0) && componentEntries.length > 0 && (
+        <p data-testid="reduced-score-notice" className="mb-3 text-xs text-amber-300">
+          Score computed from {componentEntries.length - missingComponents.length} of {componentEntries.length} components.
+        </p>
+      )}
+
+      {healthScore.formula_version && (
+        <p data-testid="formula-version" className="mb-3 text-[11px] text-slate-500">
+          Scoring formula v{healthScore.formula_version}. Scores from different formula versions are not comparable.
+        </p>
+      )}
+
       {/* Missing-component notice */}
       {missingComponents.length > 0 && (
         <div className="mb-4 p-3 bg-amber-950/40 border border-amber-800 rounded-lg text-amber-300 text-xs">

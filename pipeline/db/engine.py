@@ -81,11 +81,21 @@ def create_all_tables(engine: Engine) -> None:
     try:
         from sqlalchemy import inspect, text
         inspector = inspect(engine)
-        if "analysis_runs" in inspector.get_table_names():
-            cols = [c["name"] for c in inspector.get_columns("analysis_runs")]
-            if "knowledge_graph_summary_json" not in cols:
+        # (table, column, DDL type): purely additive, nullable columns added after
+        # the first release. create_all() never alters existing tables.
+        additive = (
+            ("analysis_runs", "knowledge_graph_summary_json", "TEXT"),   # 0005
+            ("health_scores", "formula_version", "VARCHAR(16)"),          # 0007
+            ("analysis_runs", "config_fingerprint", "VARCHAR(64)"),       # 0008
+            ("analysis_jobs", "force_refresh", "BOOLEAN NOT NULL DEFAULT FALSE"),  # 0008
+        )
+        tables = set(inspector.get_table_names())
+        for table, column, ddl in additive:
+            if table not in tables:
+                continue
+            if column not in {c["name"] for c in inspector.get_columns(table)}:
                 with engine.begin() as conn:
-                    conn.execute(text("ALTER TABLE analysis_runs ADD COLUMN knowledge_graph_summary_json TEXT"))
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
     except Exception as exc:
         # SQLite reports this exact condition when a concurrent initializer
         # won the race.  Other failures must remain visible to callers.

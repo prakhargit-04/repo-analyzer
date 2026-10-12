@@ -1,15 +1,16 @@
 """
-Tier 1 pipeline orchestrator (Python-only MVP).
+Pipeline orchestrator (Python, Java, JavaScript/TypeScript).
 
-Stages: clone -> parse -> static-analyze -> graph -> health-score -> cache.
-Every stage's output is provenance-tagged; nothing here is LLM-guessed.
-This is deliberately the *entire* Tier 1 deliverable -- get this rock solid
-on real repos before adding Java/JS support or any Tier 2/3 feature.
+Stages: clone -> parse -> static-analyze -> graph -> health-score -> chunk ->
+embed -> cache. Every stage's output is provenance-tagged; nothing here is
+LLM-guessed.
 """
 from __future__ import annotations
 import argparse
+import base64
 import json
 import os
+import struct
 import sys
 import shutil
 import tempfile
@@ -24,7 +25,7 @@ from parser_interface import parse_repository
 import static_analysis
 from graph_builder import build_graph, graph_summary
 from health_score import compute_health_score
-from chunker import generate_repository_chunks, SOURCE_CHUNKER_VERSION, SOURCE_CHUNK_SCHEMA_VERSION
+from chunker import generate_repository_chunks, SOURCE_CHUNKER_VERSION
 from embeddings import EMBEDDING_PIPELINE_VERSION
 from embeddings_stage import generate_source_embeddings
 from util import resolve_snapshot_id, try_git_head_sha, build_cache_key, CACHE_SCHEMA_VERSION, ANALYZER_VERSION, SCHEMA_VERSION
@@ -50,6 +51,36 @@ def _try_persist_to_db(result: dict) -> None:
         print(f"[db warning] Could not persist to database: {exc}", file=sys.stderr)
 
 
+def _encode_vectors(result: dict) -> dict:
+    """Return a shallow copy of result whose embedding vectors are packed as
+    base64 little-endian float64 ("vector_b64"). Lossless, and ~60% smaller
+    than the indented JSON float list. Does not mutate the input."""
+    embs = result.get("source_embeddings")
+    if not embs:
+        return result
+    packed = []
+    for emb in embs:
+        vec = emb.get("vector")
+        if isinstance(vec, list) and vec and all(isinstance(x, (int, float)) for x in vec):
+            e = {k: v for k, v in emb.items() if k != "vector"}
+            e["vector_b64"] = base64.b64encode(struct.pack(f"<{len(vec)}d", *vec)).decode("ascii")
+            packed.append(e)
+        else:
+            packed.append(emb)
+    return {**result, "source_embeddings": packed}
+
+
+def _decode_vectors(result: dict) -> dict:
+    """Inverse of _encode_vectors. Entries that still carry a plain "vector"
+    list (caches written before v6) are left untouched."""
+    for emb in result.get("source_embeddings") or []:
+        b64 = emb.pop("vector_b64", None) if isinstance(emb, dict) else None
+        if b64 is not None:
+            raw = base64.b64decode(b64)
+            emb["vector"] = list(struct.unpack(f"<{len(raw) // 8}d", raw))
+    return result
+
+
 def load_cache(cache_path: str) -> dict | None:
     """Loads cached result if present and valid; removes corrupted cache files safely."""
     if not os.path.exists(cache_path):
@@ -58,7 +89,7 @@ def load_cache(cache_path: str) -> dict | None:
         with open(cache_path, "r", encoding="utf-8") as fh:
             data = json.load(fh)
             if isinstance(data, dict) and "schema_version" in data and "knowledge_graph" in data:
-                return data
+                return _decode_vectors(data)
     except Exception as exc:
         print(f"[cache warning] Removing corrupted cache file {cache_path}: {exc}", file=sys.stderr)
         try:
@@ -86,7 +117,7 @@ def save_cache_atomic(cache_path: str, result: dict) -> None:
     fd, temp_path = tempfile.mkstemp(dir=cache_dir, suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(result, fh, indent=2, sort_keys=True)
+            json.dump(_encode_vectors(result), fh, indent=2, sort_keys=True)
         fd = -1  # fdopen took ownership; fd is now closed
 
         max_retries = 5
@@ -114,6 +145,24 @@ def save_cache_atomic(cache_path: str, result: dict) -> None:
 
 
 
+_ANALYZER_KEYS = (
+    "complexity", "maintainability", "security", "lizard_complexity",
+    "semgrep_findings", "gitleaks_findings", "osv_vulnerabilities",
+)
+
+
+def _is_memoisable(analysis: dict, emb_status: dict) -> bool:
+    """False if any analyzer or the embedding stage FAILED. 'unavailable'/'unsupported'/'partial'
+    are stable, honest outcomes and stay cacheable."""
+    if (emb_status or {}).get("status") == "failed":
+        return False
+    for key in _ANALYZER_KEYS:
+        block = analysis.get(key)
+        if isinstance(block, dict) and block.get("status") == "failed":
+            return False
+    return True
+
+
 def run_pipeline(
     repo_url: str | None,
     local_path: str | None,
@@ -121,6 +170,7 @@ def run_pipeline(
     cache_dir: str,
     stage_callback: Callable[[str, str, Optional[str]], None] | None = None,
     persist_to_db: bool = False,
+    use_cache: bool = True,
 ) -> dict:
     cleanup_dir = None
     is_fresh_clone = False
@@ -157,7 +207,7 @@ def run_pipeline(
         cache_key = f"{repo_identifier}@{versioned_key}"
         cache_path = os.path.join(cache_dir, f"{cache_key.replace('/', '_')}.json")
 
-        cached = load_cache(cache_path)
+        cached = load_cache(cache_path) if use_cache else None
         if cached is not None:
             print(f"[cache hit] {cache_path}", file=sys.stderr)
             notify("parsing", "completed", "Loaded from file cache")
@@ -220,7 +270,11 @@ def run_pipeline(
             repo_url=repo_url or local_path or "unknown",
             commit_sha=resolved_sha,
         )
-        notify("embedding", "completed", f"{len(embeddings)} embeddings generated ({emb_status['status']})")
+        if emb_status.get("status") == "completed":
+            notify("embedding", "completed", f"{len(embeddings)} embeddings generated")
+        else:
+            # Non-fatal for the job, but the stage must not claim success.
+            notify("embedding", "failed", f"Embedding stage {emb_status.get('status')}: {emb_status.get('error', 'no detail')}"[:500])
 
         result = {
             "schema_version": SCHEMA_VERSION,
@@ -256,7 +310,12 @@ def run_pipeline(
             "embedding_status": emb_status,
         }
 
-        save_cache_atomic(cache_path, result)
+        # Never memoise a degraded result: a transient failure (analyzer crash, embedding provider
+        # outage) would otherwise be replayed for this commit until the cache version changes.
+        if _is_memoisable(analysis, emb_status):
+            save_cache_atomic(cache_path, result)
+        else:
+            print("[cache] result contains a failed component; not written to the file cache", file=sys.stderr)
         if persist_to_db:
             _try_persist_to_db(result)
         return result
@@ -267,7 +326,7 @@ def run_pipeline(
 
 
 def main():
-    ap = argparse.ArgumentParser(description="GitHub Project Analyzer -- Multi-language Tier 1 pipeline")
+    ap = argparse.ArgumentParser(description="GitHub Project Analyzer -- multi-language analysis pipeline")
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--repo-url", help="e.g. https://github.com/owner/repo")
     src.add_argument("--local-path", help="path to an already-cloned local repo")

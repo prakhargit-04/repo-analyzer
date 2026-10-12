@@ -1,0 +1,19 @@
+# Pinned, version-controlled rules for the HERMETIC default test suite.
+# No registry download, no network. The live `--config auto` path is covered
+# separately by an opt-in test marked `network`.
+rules:
+  - id: test.python.eval-use
+    languages: [python]
+    severity: ERROR
+    message: Use of eval() on dynamic input.
+    pattern: eval(...)
+  - id: test.python.subprocess-shell-true
+    languages: [python]
+    severity: WARNING
+    message: subprocess call with shell=True.
+    pattern: subprocess.$FUNC(..., shell=True, ...)
+  - id: test.python.assert-in-code
+    languages: [python]
+    severity: INFO
+    message: assert used outside tests.
+    pattern: assert $X

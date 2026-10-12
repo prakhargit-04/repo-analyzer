@@ -358,6 +358,36 @@ class SemgrepFinding:
             self.provenance = f"semgrep:{SEMGREP_VERSION}"
 
 
+def resolve_semgrep_config(repo_root: Optional[str] = None) -> tuple[Optional[str], Optional[str]]:
+    """Resolve the Semgrep rules source from the SEMGREP_CONFIG env var.
+
+    Returns (config, error); exactly one is None.
+
+    * unset / "auto"  -> "auto" (Semgrep-managed OSS ruleset; needs network).
+    * anything else   -> must be an ABSOLUTE path to an existing local rules
+      file or directory located OUTSIDE the scanned repository. Registry packs
+      ("p/ci"), URLs and relative paths are rejected, and rules inside the
+      scanned repo are rejected so an untrusted repository can never choose
+      the rules it is scanned with.
+
+    Used by the test suite to run Semgrep hermetically with pinned local rules.
+    """
+    raw = (os.environ.get("SEMGREP_CONFIG") or "").strip()
+    if not raw or raw == "auto":
+        return "auto", None
+    if not os.path.isabs(raw):
+        return None, ("SEMGREP_CONFIG must be 'auto' or an absolute path to a local rules file/directory "
+                      "(registry packs, URLs and relative paths are not accepted)")
+    if not os.path.exists(raw):
+        return None, "SEMGREP_CONFIG path does not exist"
+    if repo_root:
+        real_cfg = os.path.realpath(raw)
+        real_repo = os.path.realpath(repo_root)
+        if real_cfg == real_repo or real_cfg.startswith(real_repo + os.sep):
+            return None, "SEMGREP_CONFIG points inside the scanned repository; repository-provided rules are not accepted"
+    return raw, None
+
+
 class SemgrepAnalyzer(BaseAnalyzer):
     """
     SAST/pattern-based security analyzer backed by the Semgrep binary.
@@ -451,15 +481,27 @@ class SemgrepAnalyzer(BaseAnalyzer):
                 metadata={"reason": "None of the provided file paths exist on disk"},
             )
 
+        config, config_err = resolve_semgrep_config(repo_root)
+        if config_err:
+            return AnalyzerResult(
+                status=AnalyzerStatus.FAILED,
+                errors=[config_err],
+                provenance=self.provenance_tag,
+                metadata={"semgrep_version": SEMGREP_VERSION},
+            )
+
         cmd = [
             _SEMGREP_BINARY,
             "scan",
             "--json",              # machine-readable output
             "--no-git-ignore",    # don't let the repo narrow our scope
-            "--config", "auto",   # Semgrep-managed OSS ruleset; NOT repo-provided
+            "--config", config,   # "auto" (Semgrep-managed OSS ruleset) or a pinned LOCAL file; never repo-provided
             "--quiet",            # suppress progress/banner noise on stdout
-            *abs_files,           # explicit file list, not the whole repo root
         ]
+        if config != "auto":
+            # Local rules need no registry, telemetry or update check: keep it fully offline.
+            cmd += ["--metrics=off", "--disable-version-check"]
+        cmd += abs_files          # explicit file list, not the whole repo root
 
         try:
             proc = subprocess.run(

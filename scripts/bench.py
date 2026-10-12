@@ -32,7 +32,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from graph_builder import build_graph
-from reference.graph_builder_reference import build_graph_reference
+from reference.graph_builder_original import build_graph as build_graph_reference
 from parse_python import FileParseResult, ClassNode, FunctionNode, ImportEdge
 from db.engine import create_all_tables
 from db.models import AnalysisRun

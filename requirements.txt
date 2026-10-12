@@ -1,18 +1,25 @@
+# Direct dependencies, with upper bounds so a new major release can't silently break a fresh install.
+# For a reproducible install of the exact set the test suite was verified against, use:
+#   pip install -r requirements.lock
+#
+# tree_sitter / tree_sitter_languages are pinned exactly on purpose: tree_sitter_languages 1.10.2
+# only works with the tree_sitter 0.21 Language(path, name) API (this is the source of the
+# FutureWarning in test output). Moving to tree_sitter>=0.22 means replacing tree_sitter_languages
+# with per-language grammar packages (tree-sitter-python, -java, -javascript, -typescript).
 tree_sitter==0.21.3
 tree_sitter_languages==1.10.2
-radon>=6.0
-lizard>=1.17
-bandit>=1.7
-semgrep>=1.17
-networkx>=3.0
+radon>=6.0,<7
+lizard>=1.17,<2
+bandit>=1.7,<2
+semgrep>=1.17,<2
+networkx>=3.0,<4
 # S14: persistent database storage
-sqlalchemy>=2.0
-alembic>=1.13
-psycopg2-binary>=2.9
+sqlalchemy>=2.0,<3
+alembic>=1.13,<2
+psycopg2-binary>=2.9,<3
 # S15: FastAPI + Job system
-fastapi>=0.100
-uvicorn>=0.20
-pydantic>=2.0
-httpx>=0.24
-numpy>=1.24
-
+fastapi>=0.100,<1
+uvicorn>=0.20,<1
+pydantic>=2.0,<3
+httpx>=0.24,<1
+numpy>=1.24,<3
