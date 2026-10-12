@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "framework": "nextjs",
+  "outputDirectory": ".next",
+  "rewrites": [
+    {
+      "source": "/api/backend/:path*",
+      "destination": "https://YOUR_BACKEND_URL/api/backend/:path*"
+    }
+  ],
+  "env": {
+    "NEXT_PUBLIC_API_BASE": "https://YOUR_BACKEND_URL"
+  }
+}

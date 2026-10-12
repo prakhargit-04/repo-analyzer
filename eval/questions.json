@@ -1,0 +1,301 @@
+[
+  {
+    "id": "ini-01",
+    "repo": "iniconfig",
+    "question": "What wrapper object is returned when indexing a parsed configuration by section name?",
+    "expected_files": [
+      "src/iniconfig/__init__.py"
+    ],
+    "expected_line_ranges": null,
+    "difficulty": "lookup",
+    "paraphrase": true,
+    "unanswerable": false,
+    "rationale": "src/iniconfig/__init__.py defines SectionWrapper, which wraps a single named section of an IniConfig instance.",
+    "status": "reviewed",
+    "reviewed_by": "assistant-source-review"
+  },
+  {
+    "id": "ini-02",
+    "repo": "iniconfig",
+    "question": "What characters does `COMMENTCHARS` define as INI comment markers?",
+    "expected_files": [
+      "src/iniconfig/_parse.py"
+    ],
+    "expected_line_ranges": null,
+    "difficulty": "lookup",
+    "paraphrase": false,
+    "unanswerable": false,
+    "rationale": "`src/iniconfig/_parse.py` defines COMMENTCHARS = '#;', the characters treated as comment markers.",
+    "status": "reviewed",
+    "reviewed_by": "assistant-source-review"
+  },
+  {
+    "id": "ini-03",
+    "repo": "iniconfig",
+    "question": "How does the library signal that a line in the ini file cannot be parsed?",
+    "expected_files": [
+      "src/iniconfig/exceptions.py",
+      "src/iniconfig/_parse.py"
+    ],
+    "expected_line_ranges": null,
+    "difficulty": "explanation",
+    "paraphrase": true,
+    "unanswerable": false,
+    "rationale": "exceptions.py defines ParseError with path/lineno/msg; _parse.py raises ParseError in parse_ini_data and parse_lines whenever it encounters invalid syntax.",
+    "status": "reviewed",
+    "reviewed_by": "assistant-source-review"
+  },
+  {
+    "id": "ini-04",
+    "repo": "iniconfig",
+    "question": "What does `strip_inline_comments` control in `IniConfig.parse()`?",
+    "expected_files": [
+      "src/iniconfig/_parse.py",
+      "src/iniconfig/__init__.py"
+    ],
+    "expected_line_ranges": null,
+    "difficulty": "lookup",
+    "paraphrase": false,
+    "unanswerable": false,
+    "rationale": "`src/iniconfig/__init__.py` exposes strip_inline_comments in IniConfig.parse(), and `_parse.py` applies it while parsing values and continuation lines.",
+    "status": "reviewed",
+    "reviewed_by": "assistant-source-review"
+  },
+  {
+    "id": "ini-05",
+    "repo": "iniconfig",
+    "question": "What is the data structure that maps a section name and key to the line number where it appears?",
+    "expected_files": [
+      "src/iniconfig/__init__.py",
+      "src/iniconfig/_parse.py"
+    ],
+    "expected_line_ranges": null,
+    "difficulty": "explanation",
+    "paraphrase": true,
+    "unanswerable": false,
+    "rationale": "__init__.py stores _sources: Mapping[tuple[str, str|None], int]; _parse.py builds this as sources dict indexed by (section, name) tuples.",
+    "status": "reviewed",
+    "reviewed_by": "assistant-source-review"
+  },
+  {
+    "id": "ini-06",
+    "repo": "iniconfig",
+    "question": "How does IniConfig.lineof() return the line number for a given section and key?",
+    "expected_files": [
+      "src/iniconfig/__init__.py"
+    ],
+    "expected_line_ranges": null,
+    "difficulty": "explanation",
+    "paraphrase": false,
+    "unanswerable": false,
+    "rationale": "IniConfig.lineof() in __init__.py looks up (section, name) in self._sources and returns lineno+1 (1-indexed), or None if not found.",
+    "status": "reviewed",
+    "reviewed_by": "assistant-source-review"
+  },
+  {
+    "id": "ini-07",
+    "repo": "iniconfig",
+    "question": "Which module is responsible for tokenising raw ini text into parsed lines?",
+    "expected_files": [
+      "src/iniconfig/_parse.py"
+    ],
+    "expected_line_ranges": null,
+    "difficulty": "lookup",
+    "paraphrase": true,
+    "unanswerable": false,
+    "rationale": "src/iniconfig/_parse.py contains parse_lines() which iterates over raw text lines and calls _parseline() to produce ParsedLine tokens.",
+    "status": "reviewed",
+    "reviewed_by": "assistant-source-review"
+  },
+  {
+    "id": "ini-08",
+    "repo": "iniconfig",
+    "question": "Does iniconfig expose an asynchronous API for parsing INI content?",
+    "expected_files": [],
+    "expected_line_ranges": null,
+    "difficulty": "explanation",
+    "paraphrase": false,
+    "unanswerable": true,
+    "rationale": "The pinned source exposes synchronous parse/parse_ini_data/parse_lines functions and no asynchronous parsing API; this is an absence-of-capability question rather than a feature lookup.",
+    "status": "reviewed",
+    "reviewed_by": "assistant-source-review"
+  },
+  {
+    "id": "ini-09",
+    "repo": "iniconfig",
+    "question": "What happens when SectionWrapper iterates over its keys — in what order are they yielded?",
+    "expected_files": [
+      "src/iniconfig/__init__.py"
+    ],
+    "expected_line_ranges": null,
+    "difficulty": "explanation",
+    "paraphrase": false,
+    "unanswerable": false,
+    "rationale": "SectionWrapper.__iter__ in __init__.py yields keys sorted by their line number using self.config.lineof(), preserving file order.",
+    "status": "reviewed",
+    "reviewed_by": "assistant-source-review"
+  },
+  {
+    "id": "ini-10",
+    "repo": "iniconfig",
+    "question": "Where is duplicate section detection implemented and what error does it raise?",
+    "expected_files": [
+      "src/iniconfig/_parse.py",
+      "src/iniconfig/exceptions.py"
+    ],
+    "expected_line_ranges": null,
+    "difficulty": "cross-file",
+    "paraphrase": true,
+    "unanswerable": false,
+    "rationale": "_parse.py's parse_ini_data raises ParseError (defined in exceptions.py) with message 'duplicate section <name>' when the same section header appears twice.",
+    "status": "reviewed",
+    "reviewed_by": "assistant-source-review"
+  },
+  {
+    "id": "qs-01",
+    "repo": "qs",
+    "question": "What is the default maximum nesting depth for parsing query strings?",
+    "expected_files": [
+      "lib/parse.js"
+    ],
+    "expected_line_ranges": null,
+    "difficulty": "lookup",
+    "paraphrase": true,
+    "unanswerable": false,
+    "rationale": "lib/parse.js defines defaults.depth = 5, which is the maximum object nesting depth before further nesting is treated as a key.",
+    "status": "reviewed",
+    "reviewed_by": "assistant-source-review"
+  },
+  {
+    "id": "qs-02",
+    "repo": "qs",
+    "question": "What default value is assigned to `defaults.parameterLimit` in `lib/parse.js`?",
+    "expected_files": [
+      "lib/parse.js"
+    ],
+    "expected_line_ranges": null,
+    "difficulty": "lookup",
+    "paraphrase": false,
+    "unanswerable": false,
+    "rationale": "`lib/parse.js` declares defaults.parameterLimit = 1000 and normalization uses this value when no parameterLimit option is supplied.",
+    "status": "reviewed",
+    "reviewed_by": "assistant-source-review"
+  },
+  {
+    "id": "qs-03",
+    "repo": "qs",
+    "question": "Which encoders are exposed as `Format.RFC1738` and `Format.RFC3986` in `lib/formats.js`?",
+    "expected_files": [
+      "lib/formats.js"
+    ],
+    "expected_line_ranges": null,
+    "difficulty": "lookup",
+    "paraphrase": false,
+    "unanswerable": false,
+    "rationale": "`lib/formats.js` defines RFC1738 and RFC3986 and exports matching formatters; RFC3986 is the default.",
+    "status": "reviewed",
+    "reviewed_by": "assistant-source-review"
+  },
+  {
+    "id": "qs-04",
+    "repo": "qs",
+    "question": "What mechanism does the library use to track objects that were created due to an array-limit overflow?",
+    "expected_files": [
+      "lib/utils.js"
+    ],
+    "expected_line_ranges": null,
+    "difficulty": "explanation",
+    "paraphrase": true,
+    "unanswerable": false,
+    "rationale": "lib/utils.js uses a side-channel (overflowChannel = getSideChannel()) to store per-object max numeric index metadata without polluting object properties.",
+    "status": "reviewed",
+    "reviewed_by": "assistant-source-review"
+  },
+  {
+    "id": "qs-05",
+    "repo": "qs",
+    "question": "What are the four array prefix formats available when stringifying arrays?",
+    "expected_files": [
+      "lib/stringify.js"
+    ],
+    "expected_line_ranges": null,
+    "difficulty": "lookup",
+    "paraphrase": true,
+    "unanswerable": false,
+    "rationale": "lib/stringify.js defines arrayPrefixGenerators with four entries: brackets, comma, indices, and repeat.",
+    "status": "reviewed",
+    "reviewed_by": "assistant-source-review"
+  },
+  {
+    "id": "qs-06",
+    "repo": "qs",
+    "question": "How does the library expose its public API — which functions or objects are exported from the main entry point?",
+    "expected_files": [
+      "lib/index.js"
+    ],
+    "expected_line_ranges": null,
+    "difficulty": "lookup",
+    "paraphrase": true,
+    "unanswerable": false,
+    "rationale": "lib/index.js exports an object with three properties: formats, parse, and stringify — the entire public surface of the library.",
+    "status": "reviewed",
+    "reviewed_by": "assistant-source-review"
+  },
+  {
+    "id": "qs-07",
+    "repo": "qs",
+    "question": "How are date values converted to strings by default when stringifying objects?",
+    "expected_files": [
+      "lib/stringify.js"
+    ],
+    "expected_line_ranges": null,
+    "difficulty": "explanation",
+    "paraphrase": true,
+    "unanswerable": false,
+    "rationale": "lib/stringify.js captures toISO = Date.prototype.toISOString and uses it as the default serializer for Date values; custom serializers can be provided via options.",
+    "status": "reviewed",
+    "reviewed_by": "assistant-source-review"
+  },
+  {
+    "id": "qs-08",
+    "repo": "qs",
+    "question": "Does this repository implement automatic OAuth access-token refresh?",
+    "expected_files": [],
+    "expected_line_ranges": null,
+    "difficulty": "lookup",
+    "paraphrase": false,
+    "unanswerable": true,
+    "rationale": "The pinned qs repository is a query-string parsing/stringifying library; its package metadata and source modules do not implement OAuth, access-token lifecycle, or token refresh. This tests retrieval on a topic outside the repository.",
+    "status": "reviewed",
+    "reviewed_by": "assistant-source-review"
+  },
+  {
+    "id": "qs-09",
+    "repo": "qs",
+    "question": "Which helper module does the query string parser import, and what function does it use from it?",
+    "expected_files": [
+      "lib/parse.js",
+      "lib/utils.js"
+    ],
+    "expected_line_ranges": null,
+    "difficulty": "cross-file",
+    "paraphrase": true,
+    "unanswerable": false,
+    "rationale": "lib/parse.js requires './utils' and uses utils.decode as the default decoder; lib/utils.js exports that decode function.",
+    "status": "reviewed",
+    "reviewed_by": "assistant-source-review"
+  },
+  {
+    "id": "qs-10",
+    "repo": "qs",
+    "question": "Does qs include server-side session management or cookie handling?",
+    "expected_files": [],
+    "expected_line_ranges": null,
+    "difficulty": "explanation",
+    "paraphrase": false,
+    "unanswerable": true,
+    "rationale": "No session, cookie, or HTTP server code exists anywhere in lib/; qs is solely a querystring serialisation library.",
+    "status": "reviewed",
+    "reviewed_by": "assistant-source-review"
+  }
+]

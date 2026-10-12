@@ -1,0 +1,18 @@
+{
+  "repos": [
+    {
+      "id": "iniconfig",
+      "url": "https://github.com/pytest-dev/iniconfig",
+      "sha": "00e7d87c7353b1ffecc4cd55f19acfffedd5233e",
+      "language": "python",
+      "description": "Brain-dead simple parser for ini-style files used by pytest. Small, self-contained, well-tested."
+    },
+    {
+      "id": "qs",
+      "url": "https://github.com/ljharb/qs",
+      "sha": "07b1d4d82c8f9301c105ea4b94fa2302cfd6e8b4",
+      "language": "javascript",
+      "description": "A querystring parsing and stringifying library with added security. Pure JavaScript, no dependencies in lib/."
+    }
+  ]
+}
