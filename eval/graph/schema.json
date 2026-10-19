@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GraphEdgeAnnotationRecord",
+  "description": "Schema for Repository Knowledge Graph edge accuracy annotations",
+  "type": "object",
+  "required": [
+    "repo",
+    "sha",
+    "edge_type",
+    "source_file",
+    "source_symbol",
+    "target_file",
+    "target_symbol",
+    "label",
+    "labeled_by",
+    "reviewed_by_human"
+  ],
+  "properties": {
+    "repo": {
+      "type": "string",
+      "description": "Repository identifier (e.g. pytest-dev/iniconfig)"
+    },
+    "sha": {
+      "type": "string",
+      "description": "Exact commit SHA analyzed"
+    },
+    "edge_type": {
+      "type": "string",
+      "enum": ["calls", "imports", "inherits", "contains", "depends_on", "has_finding"],
+      "description": "Relationship type of the graph edge"
+    },
+    "source_file": {
+      "type": "string",
+      "description": "Normalized relative path of the source file"
+    },
+    "source_symbol": {
+      "type": "string",
+      "description": "Source function/class/file symbol name"
+    },
+    "target_file": {
+      "type": "string",
+      "description": "Normalized relative path of the target file (or empty if external)"
+    },
+    "target_symbol": {
+      "type": "string",
+      "description": "Target function/class/import symbol name"
+    },
+    "label": {
+      "type": "string",
+      "enum": ["", "TP", "FP", "AMBIGUOUS"],
+      "description": "Human evaluation label: TP (true positive), FP (false positive), AMBIGUOUS (cannot be determined), or empty if unreviewed"
+    },
+    "labeled_by": {
+      "type": "string",
+      "description": "Name or identifier of annotator"
+    },
+    "reviewed_by_human": {
+      "type": "string",
+      "enum": ["", "true", "false"],
+      "description": "Whether reviewed by a human verifier"
+    }
+  }
+}
