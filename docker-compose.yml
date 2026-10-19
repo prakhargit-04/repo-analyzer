@@ -23,7 +23,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://repoanalyzer:${POSTGRES_PASSWORD:-changeme}@db:5432/repoanalyzer
+      DATABASE_URL: postgresql+psycopg2://repoanalyzer:${POSTGRES_PASSWORD:-changeme}@db:5432/repoanalyzer
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
       API_KEY: ${API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}

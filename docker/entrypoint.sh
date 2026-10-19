@@ -1,6 +1,16 @@
 #!/bin/sh
 set -e
 
+# Normalize postgresql:// to postgresql+psycopg2:// for SQLAlchemy 2.x psycopg2 compatibility
+if [ -n "$DATABASE_URL" ]; then
+    case "$DATABASE_URL" in
+        postgresql://*)
+            DATABASE_URL="postgresql+psycopg2://${DATABASE_URL#postgresql://}"
+            export DATABASE_URL
+            ;;
+    esac
+fi
+
 echo "[entrypoint] Waiting for database if configured..."
 if [ -n "$DATABASE_URL" ] && echo "$DATABASE_URL" | grep -q "postgres"; then
     echo "[entrypoint] PostgreSQL configured; waiting for connection..."

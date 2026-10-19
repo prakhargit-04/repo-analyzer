@@ -46,6 +46,8 @@ def get_engine(url: str | None = None, **kwargs) -> Engine:
     from sqlalchemy.pool import NullPool, StaticPool  # local import to keep module-level deps minimal
 
     resolved_url = url or get_default_url()
+    if resolved_url.startswith("postgresql://"):
+        resolved_url = resolved_url.replace("postgresql://", "postgresql+psycopg2://", 1)
     connect_args = {}
 
     if resolved_url.startswith("sqlite"):

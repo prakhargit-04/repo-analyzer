@@ -24,6 +24,8 @@ config = context.config
 # Override sqlalchemy.url from env var if set
 db_url = os.environ.get("DATABASE_URL")
 if db_url:
+    if db_url.startswith("postgresql://"):
+        db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
     config.set_main_option("sqlalchemy.url", db_url)
 
 # Interpret the config file for Python logging.
