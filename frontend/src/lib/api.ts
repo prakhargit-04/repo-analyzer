@@ -67,6 +67,18 @@ export interface HealthScoreData {
   formula?: string | null;
   note?: string | null;
   scope_policy?: string | null;
+  /** Explicit validation metadata */
+  score_validation?: {
+    validated: boolean;
+    basis: string;
+    formula_version: string;
+  } | null;
+  /** Coverage details for analyzers */
+  analyzer_coverage?: {
+    component_statuses: Record<string, string>;
+    components_analyzed: string[];
+    components_not_analyzed: string[];
+  } | null;
   [key: string]: unknown;
 }
 

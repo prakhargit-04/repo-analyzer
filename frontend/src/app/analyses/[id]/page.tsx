@@ -253,6 +253,7 @@ function AnalysisDashboard({ id }: { id: string }) {
   }
 
   if (error && !jobSummary && !analysis) {
+    const isNotFound = error.includes("404") || error.toLowerCase().includes("not found");
     return (
       <main className="min-h-screen bg-[#070b14] text-slate-100 p-5 sm:p-8">
         <div className="max-w-4xl mx-auto">
@@ -262,9 +263,23 @@ function AnalysisDashboard({ id }: { id: string }) {
           >
             ← Back to Home
           </Link>
-          <div className="bg-rose-950/60 border border-rose-800 rounded-xl p-6 text-rose-200">
-            <h2 className="text-xl font-bold mb-2">API Error</h2>
-            <p className="text-sm">{error}</p>
+          <div data-testid="error-state-card" className="bg-rose-950/60 border border-rose-800 rounded-xl p-6 text-rose-200">
+            <h2 className="text-xl font-bold mb-2">
+              {isNotFound ? "Analysis Not Found" : "Unable to Load Analysis"}
+            </h2>
+            <p className="text-sm text-rose-300">
+              {isNotFound
+                ? `No analysis job or stored result was found matching ID '${id}'. Please verify the ID or submit a new repository analysis.`
+                : error}
+            </p>
+            <div className="mt-5">
+              <Link
+                href="/"
+                className="px-4 py-2 bg-rose-900/60 hover:bg-rose-800 text-white rounded-lg text-xs font-medium transition border border-rose-700"
+              >
+                Go to Home
+              </Link>
+            </div>
           </div>
         </div>
       </main>
@@ -338,6 +353,40 @@ function AnalysisDashboard({ id }: { id: string }) {
           <div className="bg-rose-950/60 border border-rose-800 rounded-xl p-4 text-rose-200">
             <p className="font-semibold text-sm">Error</p>
             <p className="text-xs mt-1 font-mono">{error}</p>
+          </div>
+        )}
+
+        {/* Explicit Failure Card */}
+        {jobSummary?.status === "failed" && (
+          <div data-testid="job-failed-banner" className="bg-rose-950/70 border border-rose-800 rounded-xl p-6 text-rose-200">
+            <h2 className="text-lg font-bold text-rose-100 flex items-center gap-2">
+              <span>✕</span> Analysis Execution Failed
+            </h2>
+            <p className="text-sm mt-2 text-rose-300">
+              {jobSummary.error_message || "The analysis pipeline encountered a fatal error during execution."}
+            </p>
+            <div className="mt-4 flex gap-3">
+              <Link href="/" className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-medium transition">
+                Return to Home
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {/* Explicit Unloaded Partial Card */}
+        {!loading && (jobSummary?.status === "partial" || isComplete) && !analysis && (
+          <div data-testid="job-partial-unloaded-banner" className="bg-amber-950/60 border border-amber-800 rounded-xl p-6 text-amber-200">
+            <h2 className="text-lg font-bold text-amber-100 flex items-center gap-2">
+              <span>⚠</span> Analysis Results Incomplete or Unavailable
+            </h2>
+            <p className="text-sm mt-2 text-amber-300">
+              The analysis job concluded with partial status, but the full analysis payload could not be loaded.
+            </p>
+            <div className="mt-4">
+              <Link href="/" className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-medium transition">
+                Start New Analysis
+              </Link>
+            </div>
           </div>
         )}
 

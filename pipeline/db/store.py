@@ -51,11 +51,25 @@ from .models import (
 def _add_reduced_set_fields(hs_dict: dict) -> None:
     """The DB stores sub-scores but not the reduced-set disclosure; recompute it from them so the
     API reports the same components_scored / reduced_component_set / note as the pipeline result."""
-    from health_score import reduced_set_summary, _SCORE_NOTE_TAIL
+    from health_score import reduced_set_summary, _SCORE_NOTE_TAIL, HEALTH_FORMULA_VERSION
     info = reduced_set_summary(hs_dict.get("sub_scores") or {})
     hs_dict["components_scored"] = info["components_scored"]
     hs_dict["reduced_component_set"] = info["reduced_component_set"]
     hs_dict["note"] = info["reduced_note"] + _SCORE_NOTE_TAIL
+    if "score_validation" not in hs_dict:
+        hs_dict["score_validation"] = {
+            "validated": False,
+            "basis": "heuristic weights not empirically validated",
+            "formula_version": hs_dict.get("formula_version") or HEALTH_FORMULA_VERSION,
+        }
+    if "analyzer_coverage" not in hs_dict:
+        comp_statuses = hs_dict.get("component_statuses") or {}
+        missing = [k for k, v in (hs_dict.get("sub_scores") or {}).items() if v is None]
+        hs_dict["analyzer_coverage"] = {
+            "component_statuses": comp_statuses,
+            "components_analyzed": info["components_scored"],
+            "components_not_analyzed": missing,
+        }
 
 
 class EmbeddingMismatchError(Exception):

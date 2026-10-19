@@ -236,6 +236,17 @@ def compute_health_score(analysis: dict) -> dict:
     else:
         reduced_note = ""
 
+    score_validation = {
+        "validated": False,
+        "basis": "heuristic weights not empirically validated",
+        "formula_version": HEALTH_FORMULA_VERSION,
+    }
+    analyzer_coverage = {
+        "component_statuses": component_statuses,
+        "components_analyzed": components_scored,
+        "components_not_analyzed": missing,
+    }
+
     if not available:
         return {
             "composite_health_score": None,
@@ -253,6 +264,8 @@ def compute_health_score(analysis: dict) -> dict:
             "components_scored": [],
             "reduced_component_set": True,
             "note": "No score computed: 0 of " + str(len(subs)) + " components available. Informational analyzers (such as lizard_complexity) are captured separately and do not contribute to scoring calculation.",
+            "score_validation": score_val if (score_val := score_validation) else {},
+            "analyzer_coverage": analyzer_cov if (analyzer_cov := analyzer_coverage) else {},
         }
 
     weight_sum = sum(weights_config[k] for k in available)
@@ -274,5 +287,7 @@ def compute_health_score(analysis: dict) -> dict:
         "components_scored": components_scored,
         "reduced_component_set": reduced,
         "note": reduced_note + _SCORE_NOTE_TAIL,
+        "score_validation": score_validation,
+        "analyzer_coverage": analyzer_coverage,
     }
 

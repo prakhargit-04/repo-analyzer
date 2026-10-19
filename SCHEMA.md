@@ -185,13 +185,15 @@ Every edge carries `source`, `target`, `relation`, `confidence`, and `provenance
 
 ---
 
-Additive fields (0.24.3), present on freshly computed scores:
+Add-on fields (0.24.3+ and 0.25.0+):
 
 | Field | Type | Meaning |
 |---|---|---|
 | `components_scored` | string[] | Components that contributed a numeric sub-score. |
 | `formula_version` | string | Identifier of the scoring rules that produced the score (currently `2.1`). Scores with different versions must not be compared. Absent/`null` on rows stored before 0.24.5; no version is invented for them. |
 | `reduced_component_set` | boolean | `true` when fewer components were scored than the scheme defines (6, or 3 in legacy mode). The `note` then begins "Score computed from a reduced component set: N of M components (missing: ...)". |
+| `score_validation` | object | Score honesty metadata: `{"validated": false, "basis": "heuristic weights not empirically validated", "formula_version": "2.1"}`. Discloses that heuristic weights have not undergone empirical validation. |
+| `analyzer_coverage` | object | Comprehensive analyzer run status: `{"component_statuses": {...}, "components_analyzed": [...], "components_not_analyzed": [...]}` detailing which tools ran and which were missing/unsupported. |
 
 ---
 

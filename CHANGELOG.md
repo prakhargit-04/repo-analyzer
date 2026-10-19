@@ -2,6 +2,16 @@
 
 All notable changes to Repo Analyzer will be documented in this file.
 
+## [0.25.0] - 2026-10-19
+
+### Added
+- **Score honesty and disclosure**: Added `score_validation` (`{validated: false, basis: "heuristic weights not empirically validated", formula_version: "2.1"}`) and `analyzer_coverage` (per-component status plus components analyzed and missing) to `health_score` output. Old cached/stored records backfill these dynamic fields without breaking schema compatibility.
+- **Frontend honesty indicators**: Beside the composite score, the dashboard now displays a clear "Calculated score - not validated" badge. When `reduced_component_set` is true, a prominent alert banner displays `Scored from N of 6 components; missing: ...` to ensure scores are never misinterpreted.
+- **Improved error and state handling**: Added explicit user-friendly states for 404 (Analysis Not Found), execution failure, and unloaded partial runs, preventing blank screens and raw error traces.
+
+### Security
+- **Frontend dependencies**: Upgraded `next` and `eslint-config-next` to `16.4.2` to eliminate critical remote code execution (GHSA-vcvr-r3jv-pc5j), SSRF, and cache poisoning advisories.
+
 ## [0.24.7] - 2026-10-12 (final verification revision; no version bump)
 
 ### Fixed

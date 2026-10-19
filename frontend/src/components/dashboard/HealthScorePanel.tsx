@@ -71,13 +71,21 @@ export function HealthScorePanel({
           </p>
         </div>
         <div className="text-right">
-          <p
-            className={`text-5xl font-bold tabular-nums ${scoreColorClass(
-              compositeLevel
-            )}`}
-          >
-            {formatScore(compositeScore)}
-          </p>
+          <div className="flex flex-wrap items-baseline justify-end gap-2.5">
+            <p
+              className={`text-5xl font-bold tabular-nums ${scoreColorClass(
+                compositeLevel
+              )}`}
+            >
+              {formatScore(compositeScore)}
+            </p>
+            <span
+              data-testid="score-not-validated-badge"
+              className="text-xs font-semibold text-amber-300 bg-amber-950/80 border border-amber-600/50 px-2.5 py-1 rounded-md tracking-tight"
+            >
+              Calculated score - not validated
+            </span>
+          </div>
           <div className="mt-2 flex items-center justify-end gap-2">
             {healthScore.status && (
               <StatusBadge status={healthScore.status} />
@@ -85,6 +93,26 @@ export function HealthScorePanel({
           </div>
         </div>
       </div>
+
+      {/* Visible banner when reduced_component_set is true (B1) */}
+      {(healthScore.reduced_component_set ?? missingComponents.length > 0) && (
+        <div
+          data-testid="reduced-component-set-banner"
+          className="mb-5 p-3.5 bg-amber-950/70 border-2 border-amber-500/80 rounded-xl text-amber-200 text-xs flex items-center gap-3 shadow-md"
+        >
+          <span className="text-amber-400 font-extrabold text-base leading-none">⚠</span>
+          <div className="leading-relaxed">
+            <span className="font-bold text-amber-300">Reduced Component Set:</span>{" "}
+            Scored from {Math.max(0, 6 - missingComponents.length)} of 6 components; missing:{" "}
+            <span className="font-mono text-amber-100 font-semibold">
+              {missingComponents.length > 0 ? missingComponents.join(", ") : "none"}
+            </span>.
+            {healthScore.weights_renormalized && (
+              <span className="ml-1 text-amber-400/90 font-medium">— weights renormalized over scored components.</span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Composite progress bar */}
       {compositeScore != null && (

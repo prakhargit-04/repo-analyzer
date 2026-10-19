@@ -105,6 +105,24 @@ describe("HealthScorePanel", () => {
     assert.match(out, /reduced-score-notice/);
     assert.match(out, /3 of 4 components/);
     assert.match(out, /Missing components/);
+    assert.match(out, /reduced-component-set-banner/);
+    assert.match(out, /Calculated score - not validated/);
+  });
+
+  test("always shows honesty badge 'Calculated score - not validated' beside the score", () => {
+    const out = html(
+      <HealthScorePanel
+        onViewFindings={noop}
+        healthScore={{
+          composite_health_score: 95, status: "complete",
+          sub_scores: { complexity: 95 },
+          component_statuses: { complexity: "success" },
+          missing_components: [],
+        }}
+      />,
+    );
+    assert.match(out, /Calculated score - not validated/);
+    assert.match(out, /score-not-validated-badge/);
   });
 });
 

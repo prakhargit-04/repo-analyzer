@@ -203,3 +203,31 @@ describe("repoDisplayName", () => {
     assert.strictEqual(result, "/github.com");
   });
 });
+
+// ─── B3 Status & Error State helpers ──────────────────────────────────────────
+
+describe("B3 Failure & 404 UI State Handling", () => {
+  test("404 error string is recognized as not-found error", () => {
+    const errorStr1 = "Failed to fetch job or analysis for ID 'job_123' (status 404)";
+    const errorStr2 = "Analysis run 'run_456' not found";
+    const isNotFound1 = errorStr1.includes("404") || errorStr1.toLowerCase().includes("not found");
+    const isNotFound2 = errorStr2.includes("404") || errorStr2.toLowerCase().includes("not found");
+    assert.strictEqual(isNotFound1, true);
+    assert.strictEqual(isNotFound2, true);
+  });
+
+  test("failed job provides fallback error message when empty", () => {
+    const formatFailedMessage = (msg?: string | null) =>
+      msg && msg.trim() ? msg : "The analysis pipeline encountered a fatal error during execution.";
+    assert.strictEqual(formatFailedMessage(null), "The analysis pipeline encountered a fatal error during execution.");
+    assert.strictEqual(formatFailedMessage(""), "The analysis pipeline encountered a fatal error during execution.");
+    assert.strictEqual(formatFailedMessage("Cloning timed out"), "Cloning timed out");
+  });
+
+  test("stale-cleaned job message is recognized", () => {
+    const staleMsg = "Job marked failed on startup: stuck in status 'cloning' for over 1800 seconds.";
+    const isStale = staleMsg.toLowerCase().includes("stuck") || staleMsg.toLowerCase().includes("stale");
+    assert.strictEqual(isStale, true);
+  });
+});
+

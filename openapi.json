@@ -3,7 +3,7 @@
   "info": {
     "title": "Repo Analyzer API",
     "description": "Language-agnostic repository analysis and knowledge-graph engine backend",
-    "version": "0.24.7"
+    "version": "0.25.0"
   },
   "paths": {
     "/api/v1/health": {
