@@ -12,9 +12,7 @@ import argparse
 import csv
 import json
 import math
-import sys
-from pathlib import Path
-from typing import List, Tuple, Dict, Any, Optional
+from typing import Any
 
 
 def rank_data(a: list[float]) -> list[float]:
@@ -117,9 +115,18 @@ def evaluate_ratings(csv_path: str) -> dict[str, Any]:
     rho = spearman_rho(human_scores, pipeline_scores)
     tau = kendall_tau(human_scores, pipeline_scores)
 
+    # Pre-registered protocol requires >= 15 ratings across the candidate panel
+    is_fully_validated = (len(rated_rows) >= 15 and len(rated_rows) == total_rows)
+    if len(rated_rows) < 15:
+        status_str = f"INCOMPLETE: {len(rated_rows)} of {total_rows} ratings reviewed (requires >= 15 ratings for empirical validation)"
+    elif len(rated_rows) < total_rows:
+        status_str = f"INCOMPLETE: {len(rated_rows)} of {total_rows} ratings reviewed (requires {total_rows}/{total_rows})"
+    else:
+        status_str = f"VALIDATED: {len(rated_rows)} of {total_rows} ratings reviewed"
+
     return {
-        "validated": True,
-        "status": f"VALIDATED: {len(rated_rows)} of {total_rows} ratings reviewed",
+        "validated": is_fully_validated,
+        "status": status_str,
         "total_rows": total_rows,
         "reviewed_count": len(rated_rows),
         "spearman_rho": round(rho, 4),
@@ -146,7 +153,7 @@ def main():
     if args.json:
         print(json.dumps(res, indent=2))
     else:
-        print(f"=== Health Score Empirical Correlation Results ===")
+        print("=== Health Score Empirical Correlation Results ===")
         print(f"Status: {res['status']}")
         print(f"Spearman rho: {res['spearman_rho']:.4f} (Threshold >= 0.60: {res['meets_preregistered_spearman']})")
         print(f"Kendall tau:  {res['kendall_tau']:.4f} (Threshold >= 0.80: {res['meets_preregistered_kendall']})")

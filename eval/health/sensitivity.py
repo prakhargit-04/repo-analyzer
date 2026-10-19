@@ -9,10 +9,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
-from typing import Dict, Any, List, Tuple
+from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 PIPELINE_DIR = REPO_ROOT / "pipeline"
@@ -20,49 +19,52 @@ for p in [str(REPO_ROOT), str(PIPELINE_DIR)]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from health_score import compute_health_score, DEFAULT_WEIGHTS_V2
+from health_score import DEFAULT_WEIGHTS_V2
+
+
+CANONICAL_V2_COMPONENTS = {
+    "complexity": 85.0,
+    "maintainability": 95.0,
+    "security": 70.0,
+    "sast": 80.0,
+    "secrets": 90.0,
+    "vulnerabilities": 75.0,
+}
 
 
 def run_sensitivity_analysis(
-    subscores: dict[str, float],
+    subscores: dict[str, float] | None = None,
     base_weights: dict[str, float] | None = None,
     perturbation: float = 0.20,
 ) -> dict[str, Any]:
     """
     Simulates sensitivity of composite score to +/- perturbation in individual component weights.
+    Supports all 6 Health Score v2 components.
     """
     weights = dict(base_weights or DEFAULT_WEIGHTS_V2)
+    scores = dict(subscores or CANONICAL_V2_COMPONENTS)
 
-    # Synthetic analysis dict to feed compute_health_score
-    def make_mock_analysis(m: float, c: float, s: float, d: float) -> dict[str, Any]:
-        return {
-            "maintainability": {"status": "success", "maintainability_index": m, "results": []},
-            "complexity": {"status": "success", "results": [{"rank": "A", "cyclomatic_complexity": 2}]},
-            "security": {
-                "bandit": {"status": "success", "results": []},
-                "semgrep": {"status": "success", "results": []},
-                "gitleaks": {"status": "success", "results": []},
-            },
-            "dependencies": {"status": "success", "results": []},
-        }
+    # Active components present in both weights and subscores
+    active_keys = [k for k in weights if k in scores]
+    if not active_keys:
+        raise ValueError("No matching components between weights and subscores")
 
     # Baseline calculation with standard weights
-    # Direct formula calculation consistent with compute_health_score
-    base_total = sum(weights[k] for k in subscores if k in weights)
-    base_score = sum(subscores[k] * (weights[k] / base_total) for k in subscores if k in weights)
+    base_total = sum(weights[k] for k in active_keys)
+    base_score = sum(scores[k] * (weights[k] / base_total) for k in active_keys)
 
     results: dict[str, Any] = {}
-    for comp in weights:
+    for comp in active_keys:
         drifts = []
         for direction, delta in [("decrease (-20%)", -perturbation), ("increase (+20%)", perturbation)]:
             perturbed_weights = dict(weights)
-            perturbed_weights[comp] = max(0.01, weights[comp] * (1.0 + delta))
+            perturbed_weights[comp] = max(0.001, weights[comp] * (1.0 + delta))
 
-            # Renormalize
-            norm_total = sum(perturbed_weights[k] for k in subscores if k in perturbed_weights)
+            # Renormalize active weights
+            norm_total = sum(perturbed_weights[k] for k in active_keys)
             perturbed_score = sum(
-                subscores[k] * (perturbed_weights[k] / norm_total)
-                for k in subscores if k in perturbed_weights
+                scores[k] * (perturbed_weights[k] / norm_total)
+                for k in active_keys
             )
 
             drift = abs(perturbed_score - base_score)
@@ -85,7 +87,7 @@ def run_sensitivity_analysis(
 
     return {
         "base_score": round(base_score, 2),
-        "subscores": subscores,
+        "subscores": scores,
         "perturbation_percent": perturbation * 100,
         "ranked_volatility": [
             {
@@ -101,19 +103,23 @@ def run_sensitivity_analysis(
 
 def main():
     parser = argparse.ArgumentParser(description="Analyze health score sensitivity to weight perturbations")
-    parser.add_argument("--maintainability", type=float, default=95.0, help="Maintainability subscore (0-100)")
     parser.add_argument("--complexity", type=float, default=85.0, help="Complexity subscore (0-100)")
-    parser.add_argument("--security", type=float, default=70.0, help="Security subscore (0-100)")
-    parser.add_argument("--dependencies", type=float, default=60.0, help="Dependencies subscore (0-100)")
+    parser.add_argument("--maintainability", type=float, default=95.0, help="Maintainability subscore (0-100)")
+    parser.add_argument("--security", type=float, default=70.0, help="Security (Bandit) subscore (0-100)")
+    parser.add_argument("--sast", type=float, default=80.0, help="SAST (Semgrep) subscore (0-100)")
+    parser.add_argument("--secrets", type=float, default=90.0, help="Secrets (Gitleaks) subscore (0-100)")
+    parser.add_argument("--vulnerabilities", type=float, default=75.0, help="Vulnerabilities (OSV) subscore (0-100)")
     parser.add_argument("--perturbation", type=float, default=0.20, help="Perturbation fraction (default: 0.20 for +/-20%)")
     parser.add_argument("--json", action="store_true", help="Output raw JSON")
     args = parser.parse_args()
 
     subscores = {
-        "maintainability": args.maintainability,
         "complexity": args.complexity,
+        "maintainability": args.maintainability,
         "security": args.security,
-        "dependencies": args.dependencies,
+        "sast": args.sast,
+        "secrets": args.secrets,
+        "vulnerabilities": args.vulnerabilities,
     }
 
     report = run_sensitivity_analysis(subscores, perturbation=args.perturbation)
@@ -121,7 +127,7 @@ def main():
     if args.json:
         print(json.dumps(report, indent=2))
     else:
-        print(f"=== Health Score Weight Sensitivity Analysis ===")
+        print("=== Health Score Weight Sensitivity Analysis (v2 6-Component) ===")
         print(f"Base Composite Score: {report['base_score']}")
         print(f"Subscores: {subscores}")
         print(f"Perturbation: +/-{report['perturbation_percent']:.0f}%\n")

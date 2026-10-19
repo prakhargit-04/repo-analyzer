@@ -93,3 +93,35 @@ def test_calculate_metrics_synthetic_20_row_fixture():
     assert contains["tp"] == 3
     assert contains["fp"] == 2
     assert contains["precision"] == 0.6
+    assert ov["recall"] is None, "Recall should be None when no ground-truth FN markers are provided"
+
+
+def test_calculate_metrics_partial_review():
+    rows = [
+        {"edge_type": "calls", "label": "TP" if i < 5 else ""}
+        for i in range(20)
+    ]
+    res = calculate_metrics(rows)
+    assert res["validated"] is False
+    assert res["reviewed_count"] == 5
+    assert "INCOMPLETE: 5 of 20 labels reviewed" in res["status"]
+
+
+def test_calculate_metrics_with_fn_recall():
+    rows = [
+        {"edge_type": "calls", "label": "TP"},
+        {"edge_type": "calls", "label": "TP"},
+        {"edge_type": "calls", "label": "FP"},
+        {"edge_type": "calls", "label": "FN"},
+    ]
+    res = calculate_metrics(rows)
+    assert res["validated"] is True
+    ov = res["overall"]
+    assert ov["tp"] == 2
+    assert ov["fp"] == 1
+    assert ov["fn"] == 1
+    # Precision: 2 / (2 + 1) = 0.6667
+    assert ov["precision"] == 0.6667
+    # Recall: 2 / (2 + 1) = 0.6667
+    assert ov["recall"] == 0.6667
+    assert ov["f1"] == 0.6667

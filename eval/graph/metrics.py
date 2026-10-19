@@ -12,10 +12,8 @@ import argparse
 import csv
 import json
 import math
-import sys
 from collections import defaultdict
-from pathlib import Path
-from typing import Dict, List, Tuple, Any, Optional
+from typing import Any
 
 
 def wilson_ci(k: int, n: int, z: float = 1.95996) -> tuple[float, float]:
@@ -36,7 +34,7 @@ def calculate_metrics(rows: list[dict[str, str]]) -> dict[str, Any]:
     total_rows = len(rows)
     reviewed = [
         r for r in rows
-        if r.get("label", "").strip().upper() in ("TP", "FP", "AMBIGUOUS")
+        if r.get("label", "").strip().upper() in ("TP", "FP", "AMBIGUOUS", "FN")
     ]
 
     if not reviewed:
@@ -59,33 +57,49 @@ def calculate_metrics(rows: list[dict[str, str]]) -> dict[str, Any]:
         tp = sum(1 for r in group_rows if r.get("label", "").strip().upper() == "TP")
         fp = sum(1 for r in group_rows if r.get("label", "").strip().upper() == "FP")
         ambig = sum(1 for r in group_rows if r.get("label", "").strip().upper() == "AMBIGUOUS")
+        fn = sum(1 for r in group_rows if r.get("label", "").strip().upper() == "FN")
+
         valid_eval = tp + fp
         precision = tp / valid_eval if valid_eval > 0 else 0.0
+        precision_conservative = tp / (valid_eval + ambig) if (valid_eval + ambig) > 0 else 0.0
         ci_low, ci_high = wilson_ci(tp, valid_eval)
 
-        # Recall/F1 if ground-truth FN markers exist in row data
-        fn = sum(1 for r in group_rows if r.get("label", "").strip().upper() == "FN")
-        recall = tp / (tp + fn) if (tp + fn) > 0 else (1.0 if tp > 0 else 0.0)
-        f1 = (2 * precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+        # Recall/F1 can only be calculated if ground-truth FN markers exist in the sample
+        if (tp + fn) > 0 and fn > 0:
+            recall = round(tp / (tp + fn), 4)
+            f1 = round((2 * precision * recall) / (precision + recall), 4) if (precision and recall) else 0.0
+        else:
+            recall = None
+            f1 = None
 
         return {
             "total_reviewed": len(group_rows),
             "tp": tp,
             "fp": fp,
             "ambiguous": ambig,
+            "fn": fn,
             "evaluated_count": valid_eval,
             "precision": round(precision, 4),
+            "precision_conservative": round(precision_conservative, 4),
             "precision_95ci": [ci_low, ci_high],
-            "recall": round(recall, 4),
-            "f1": round(f1, 4),
+            "recall": recall,
+            "f1": f1,
         }
 
     overall = summarize_group(reviewed)
     per_type = {etype: summarize_group(g_rows) for etype, g_rows in by_type.items()}
 
+    # Only mark validated if all rows have been reviewed
+    is_fully_reviewed = (len(reviewed) == total_rows and total_rows > 0)
+    status_str = (
+        f"VALIDATED: {len(reviewed)} of {total_rows} labels reviewed"
+        if is_fully_reviewed
+        else f"INCOMPLETE: {len(reviewed)} of {total_rows} labels reviewed (requires {total_rows}/{total_rows})"
+    )
+
     return {
-        "validated": True,
-        "status": f"VALIDATED: {len(reviewed)} of {total_rows} labels reviewed",
+        "validated": is_fully_reviewed,
+        "status": status_str,
         "total_rows": total_rows,
         "reviewed_count": len(reviewed),
         "overall": overall,
@@ -118,12 +132,12 @@ def main():
     if args.json:
         print(json.dumps(res, indent=2))
     else:
-        print(f"=== Graph Edge Accuracy Metrics ===")
+        print("=== Graph Edge Accuracy Metrics ===")
         print(f"Status: {res['status']}")
         ov = res["overall"]
         print(f"Precision: {ov['precision'] * 100:.2f}%  (95% CI: [{ov['precision_95ci'][0]*100:.1f}%, {ov['precision_95ci'][1]*100:.1f}%])")
         print(f"Counts: TP={ov['tp']}, FP={ov['fp']}, AMBIGUOUS={ov['ambiguous']}")
-        print(f"\nBreakdown by Edge Type:")
+        print("\nBreakdown by Edge Type:")
         for etype, data in res["per_edge_type"].items():
             print(f"  - {etype:<12}: Precision={data['precision']*100:5.1f}% (95% CI [{data['precision_95ci'][0]*100:.1f}%, {data['precision_95ci'][1]*100:.1f}%])  (TP={data['tp']}, FP={data['fp']}, AMBIG={data['ambiguous']})")
 

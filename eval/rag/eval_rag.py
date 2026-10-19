@@ -21,7 +21,7 @@ import sys
 import time
 from pathlib import Path
 from statistics import median, quantiles
-from typing import Dict, List, Any, Optional
+from typing import Any, Optional
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 PIPELINE_DIR = REPO_ROOT / "pipeline"
@@ -68,13 +68,13 @@ def evaluate_rag(
         if output_report:
             os.makedirs(os.path.dirname(output_report), exist_ok=True)
             with open(output_report, "w", encoding="utf-8") as f:
-                f.write(f"# RAG Accuracy Evaluation Report (Session 25 Part E)\n\n")
-                f.write(f"> **Status: NOT RUN**\n>\n")
+                f.write("# RAG Accuracy Evaluation Report (Session 25 Part E)\n\n")
+                f.write("> **Status: NOT RUN**\n>\n")
                 f.write(f"> {msg}\n>\n")
-                f.write(f"> Harness is built and verified via mock/dry run. To execute: set `OPENAI_API_KEY` or `GEMINI_API_KEY` and run `python eval/rag/eval_rag.py`.\n\n")
-                f.write(f"## Configured Evaluation Gates\n")
+                f.write("> Harness is built and verified via mock/dry run. To execute: set `OPENAI_API_KEY` or `GEMINI_API_KEY` and run `python eval/rag/eval_rag.py`.\n\n")
+                f.write("## Configured Evaluation Gates\n")
                 f.write(f"- Pinned budget: {MAX_BUDGET_QUERIES} queries max / ${MAX_BUDGET_USD:.2f} max cost\n")
-                f.write(f"- Total questions: 30 (20 answerable with line evidence, 10 unanswerable negative probes)\n")
+                f.write("- Total questions: 30 (20 answerable with line evidence, 10 unanswerable negative probes)\n")
         return {"status": "NOT RUN", "reason": "No API key set"}
 
     # Load questions
@@ -97,21 +97,18 @@ def evaluate_rag(
         is_answerable = q.get("is_answerable", not q.get("unanswerable", False))
         q_text = q["question"]
         exp_files = set(q.get("expected_files", []))
+        _ = exp_files  # referenced for real citation evaluation
 
         # In real or dry-run evaluation:
         if dry_run:
-            # Deterministic mock simulation
-            time.sleep(0.01)
+            # Deterministic plumbing validation (measures harness timings, does NOT fabricate real AI scores)
+            time.sleep(0.005)
             duration_ms = (time.perf_counter() - start_time) * 1000
             latencies.append(duration_ms)
             total_input_tokens += len(q_text.split()) * 4
             total_output_tokens += 50
             if not is_answerable:
                 unanswerable_total += 1
-                unanswerable_correct += 1  # correctly refused
-            else:
-                citation_precisions.append(1.0)
-                citation_recalls.append(1.0)
         else:
             # Real AI execution hook
             # (Calls production pipeline ask/retrieve functions with API key)
@@ -123,12 +120,33 @@ def evaluate_rag(
     p50_lat = median(latencies) if latencies else 0.0
     p95_lat = quantiles(latencies, n=20)[18] if len(latencies) >= 20 else (max(latencies) if latencies else 0.0)
 
+    # In dry-run mode, we strictly report status as unvalidated mock and do NOT fabricate perfect scores
+    if dry_run:
+        status_str = "NOT RUN (DRY RUN / MOCK ONLY)"
+        avg_precision = None
+        avg_recall = None
+        hallucination_rate = None
+    elif api_key:
+        status_str = "COMPLETED"
+        avg_precision = round(sum(citation_precisions) / len(citation_precisions), 4) if citation_precisions else None
+        avg_recall = round(sum(citation_recalls) / len(citation_recalls), 4) if citation_recalls else None
+        hallucination_rate = (
+            round(1.0 - (unanswerable_correct / unanswerable_total), 4)
+            if unanswerable_total > 0
+            else None
+        )
+    else:
+        status_str = "NOT RUN"
+        avg_precision = None
+        avg_recall = None
+        hallucination_rate = None
+
     report = {
-        "status": "COMPLETED" if (api_key or dry_run) else "NOT RUN",
+        "status": status_str,
         "questions_evaluated": len(questions),
-        "citation_precision": round(sum(citation_precisions)/len(citation_precisions) if citation_precisions else 1.0, 4),
-        "citation_recall": round(sum(citation_recalls)/len(citation_recalls) if citation_recalls else 1.0, 4),
-        "hallucination_rate_on_unanswerable": round(1.0 - (unanswerable_correct / unanswerable_total if unanswerable_total else 1.0), 4),
+        "citation_precision": avg_precision,
+        "citation_recall": avg_recall,
+        "hallucination_rate_on_unanswerable": hallucination_rate,
         "latency_p50_ms": round(p50_lat, 2),
         "latency_p95_ms": round(p95_lat, 2),
         "cost_estimate_usd": round(cost_est, 6),
@@ -137,14 +155,22 @@ def evaluate_rag(
     if output_report:
         os.makedirs(os.path.dirname(output_report), exist_ok=True)
         with open(output_report, "w", encoding="utf-8") as f:
-            f.write(f"# RAG Accuracy Evaluation Report (Session 25 Part E)\n\n")
+            f.write("# RAG Accuracy Evaluation Report (Session 25 Part E)\n\n")
             f.write(f"**Status:** {report['status']} (dry_run={dry_run})\n\n")
-            f.write(f"| Metric | Result |\n")
-            f.write(f"| :--- | :--- |\n")
+            if dry_run:
+                f.write("> [!NOTE]\n")
+                f.write("> This was a dry-run execution validating harness plumbing, latencies, and token cost estimators.\n")
+                f.write("> Real citation precision, citation recall, and hallucination resistance require setting `OPENAI_API_KEY` or `GEMINI_API_KEY`.\n")
+                f.write("> Synthetic numbers are never presented as real AI results.\n\n")
+            f.write("| Metric | Result |\n")
+            f.write("| :--- | :--- |\n")
             f.write(f"| **Questions Evaluated** | {report['questions_evaluated']} |\n")
-            f.write(f"| **Citation Precision** | {report['citation_precision']*100:.1f}% |\n")
-            f.write(f"| **Citation Recall** | {report['citation_recall']*100:.1f}% |\n")
-            f.write(f"| **Hallucination Rate (Unanswerable)** | {report['hallucination_rate_on_unanswerable']*100:.1f}% |\n")
+            prec_str = f"{report['citation_precision']*100:.1f}%" if report['citation_precision'] is not None else "N/A (Dry run / No API key)"
+            rec_str = f"{report['citation_recall']*100:.1f}%" if report['citation_recall'] is not None else "N/A (Dry run / No API key)"
+            hal_str = f"{report['hallucination_rate_on_unanswerable']*100:.1f}%" if report['hallucination_rate_on_unanswerable'] is not None else "N/A (Dry run / No API key)"
+            f.write(f"| **Citation Precision** | {prec_str} |\n")
+            f.write(f"| **Citation Recall** | {rec_str} |\n")
+            f.write(f"| **Hallucination Rate (Unanswerable)** | {hal_str} |\n")
             f.write(f"| **Latency p50** | {report['latency_p50_ms']} ms |\n")
             f.write(f"| **Latency p95** | {report['latency_p95_ms']} ms |\n")
             f.write(f"| **Estimated Token Cost** | ${report['cost_estimate_usd']:.6f} |\n")
