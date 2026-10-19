@@ -136,8 +136,16 @@ jobs:
             echo "Waiting for backend ($i/30)..."
             sleep 2
           done
-          # Test frontend HTTP response
-          curl -fs http://localhost:3000/ || exit 1
+          # Test frontend HTTP response with retry loop to allow Next.js server to start
+          for i in $(seq 1 30); do
+            if curl -fs http://localhost:3000/ >/dev/null; then
+              echo "Frontend is healthy!"
+              break
+            fi
+            echo "Waiting for frontend ($i/30)..."
+            sleep 2
+          done
+          curl -fs http://localhost:3000/ >/dev/null || exit 1
 
       - name: Tear down Docker Compose
         if: always()

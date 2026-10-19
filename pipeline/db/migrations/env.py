@@ -21,12 +21,17 @@ from pipeline.db.models import Base
 # this is the Alembic Config object
 config = context.config
 
-# Override sqlalchemy.url from env var if set
+# Override sqlalchemy.url from env var if running standalone (CLI / entrypoint)
+# or if sqlalchemy.url is the default placeholder from alembic.ini.
+# If a programmatic caller explicitly set sqlalchemy.url (e.g., in unit tests), preserve it.
+current_url = config.get_main_option("sqlalchemy.url")
 db_url = os.environ.get("DATABASE_URL")
-if db_url:
+if db_url and (not current_url or current_url in ("sqlite:///repo_analyzer.db", "DRIVER://...")):
     if db_url.startswith("postgresql://"):
         db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
     config.set_main_option("sqlalchemy.url", db_url)
+elif current_url and current_url.startswith("postgresql://"):
+    config.set_main_option("sqlalchemy.url", current_url.replace("postgresql://", "postgresql+psycopg2://", 1))
 
 # Interpret the config file for Python logging.
 if config.config_file_name is not None:
