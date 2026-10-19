@@ -51,3 +51,4 @@ frontend/.next/
 
 audit/
 eval/results/
+!eval/results/S25E_REPORT.md

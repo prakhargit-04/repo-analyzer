@@ -3,299 +3,712 @@
     "id": "ini-01",
     "repo": "iniconfig",
     "question": "What wrapper object is returned when indexing a parsed configuration by section name?",
+    "expected_answer_summary": "SectionWrapper wraps a single named section of an IniConfig instance.",
+    "expected_sources": [
+      {
+        "file": "src/iniconfig/__init__.py",
+        "start_line": 24,
+        "end_line": 34
+      }
+    ],
     "expected_files": [
       "src/iniconfig/__init__.py"
     ],
-    "expected_line_ranges": null,
+    "expected_line_ranges": [[24, 34]],
     "difficulty": "lookup",
     "paraphrase": true,
+    "is_answerable": true,
     "unanswerable": false,
+    "category": "architecture",
     "rationale": "src/iniconfig/__init__.py defines SectionWrapper, which wraps a single named section of an IniConfig instance.",
     "status": "reviewed",
-    "reviewed_by": "assistant-source-review"
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
   },
   {
     "id": "ini-02",
     "repo": "iniconfig",
-    "question": "What characters does `COMMENTCHARS` define as INI comment markers?",
+    "question": "What characters does COMMENTCHARS define as INI comment markers?",
+    "expected_answer_summary": "COMMENTCHARS defines '#;' as comment markers.",
+    "expected_sources": [
+      {
+        "file": "src/iniconfig/_parse.py",
+        "start_line": 7,
+        "end_line": 7
+      }
+    ],
     "expected_files": [
       "src/iniconfig/_parse.py"
     ],
-    "expected_line_ranges": null,
+    "expected_line_ranges": [[7, 7]],
     "difficulty": "lookup",
     "paraphrase": false,
+    "is_answerable": true,
     "unanswerable": false,
-    "rationale": "`src/iniconfig/_parse.py` defines COMMENTCHARS = '#;', the characters treated as comment markers.",
+    "category": "implementation",
+    "rationale": "src/iniconfig/_parse.py defines COMMENTCHARS = '#;' as the comment markers.",
     "status": "reviewed",
-    "reviewed_by": "assistant-source-review"
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
   },
   {
     "id": "ini-03",
     "repo": "iniconfig",
     "question": "How does the library signal that a line in the ini file cannot be parsed?",
+    "expected_answer_summary": "ParseError is raised with path, lineno, and error message.",
+    "expected_sources": [
+      {
+        "file": "src/iniconfig/exceptions.py",
+        "start_line": 1,
+        "end_line": 17
+      },
+      {
+        "file": "src/iniconfig/_parse.py",
+        "start_line": 51,
+        "end_line": 65
+      }
+    ],
     "expected_files": [
       "src/iniconfig/exceptions.py",
       "src/iniconfig/_parse.py"
     ],
-    "expected_line_ranges": null,
+    "expected_line_ranges": [[1, 17], [51, 65]],
     "difficulty": "explanation",
     "paraphrase": true,
+    "is_answerable": true,
     "unanswerable": false,
-    "rationale": "exceptions.py defines ParseError with path/lineno/msg; _parse.py raises ParseError in parse_ini_data and parse_lines whenever it encounters invalid syntax.",
+    "category": "architecture",
+    "rationale": "exceptions.py defines ParseError; _parse.py raises ParseError in parse_ini_data and parse_lines.",
     "status": "reviewed",
-    "reviewed_by": "assistant-source-review"
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
   },
   {
     "id": "ini-04",
     "repo": "iniconfig",
-    "question": "What does `strip_inline_comments` control in `IniConfig.parse()`?",
-    "expected_files": [
-      "src/iniconfig/_parse.py",
-      "src/iniconfig/__init__.py"
+    "question": "What does strip_inline_comments control in IniConfig.parse()?",
+    "expected_answer_summary": "Whether inline comments starting with # or ; are stripped from parsed configuration values.",
+    "expected_sources": [
+      {
+        "file": "src/iniconfig/__init__.py",
+        "start_line": 132,
+        "end_line": 144
+      },
+      {
+        "file": "src/iniconfig/_parse.py",
+        "start_line": 99,
+        "end_line": 106
+      }
     ],
-    "expected_line_ranges": null,
-    "difficulty": "lookup",
-    "paraphrase": false,
-    "unanswerable": false,
-    "rationale": "`src/iniconfig/__init__.py` exposes strip_inline_comments in IniConfig.parse(), and `_parse.py` applies it while parsing values and continuation lines.",
-    "status": "reviewed",
-    "reviewed_by": "assistant-source-review"
-  },
-  {
-    "id": "ini-05",
-    "repo": "iniconfig",
-    "question": "What is the data structure that maps a section name and key to the line number where it appears?",
     "expected_files": [
       "src/iniconfig/__init__.py",
       "src/iniconfig/_parse.py"
     ],
-    "expected_line_ranges": null,
-    "difficulty": "explanation",
-    "paraphrase": true,
+    "expected_line_ranges": [[132, 144], [99, 106]],
+    "difficulty": "lookup",
+    "paraphrase": false,
+    "is_answerable": true,
     "unanswerable": false,
-    "rationale": "__init__.py stores _sources: Mapping[tuple[str, str|None], int]; _parse.py builds this as sources dict indexed by (section, name) tuples.",
+    "category": "implementation",
+    "rationale": "IniConfig.parse exposes strip_inline_comments, applied during line parsing in _parse.py.",
     "status": "reviewed",
-    "reviewed_by": "assistant-source-review"
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
+  },
+  {
+    "id": "ini-05",
+    "repo": "iniconfig",
+    "question": "What line number does SectionWrapper.lineof() return for a key?",
+    "expected_answer_summary": "It delegates to self.config.lineof(self.name, name) to return the 0-based source line number.",
+    "expected_sources": [
+      {
+        "file": "src/iniconfig/__init__.py",
+        "start_line": 32,
+        "end_line": 34
+      }
+    ],
+    "expected_files": [
+      "src/iniconfig/__init__.py"
+    ],
+    "expected_line_ranges": [[32, 34]],
+    "difficulty": "lookup",
+    "paraphrase": false,
+    "is_answerable": true,
+    "unanswerable": false,
+    "category": "implementation",
+    "rationale": "SectionWrapper.lineof calls self.config.lineof(self.name, name).",
+    "status": "reviewed",
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
   },
   {
     "id": "ini-06",
     "repo": "iniconfig",
-    "question": "How does IniConfig.lineof() return the line number for a given section and key?",
-    "expected_files": [
-      "src/iniconfig/__init__.py"
+    "question": "How does parse_ini_data in _parse.py handle UTF-8 Byte Order Marks (BOM)?",
+    "expected_answer_summary": "It removes UTF8_BOM using data.removeprefix(UTF8_BOM).",
+    "expected_sources": [
+      {
+        "file": "src/iniconfig/_parse.py",
+        "start_line": 8,
+        "end_line": 40
+      }
     ],
-    "expected_line_ranges": null,
-    "difficulty": "explanation",
+    "expected_files": [
+      "src/iniconfig/_parse.py"
+    ],
+    "expected_line_ranges": [[8, 40]],
+    "difficulty": "lookup",
     "paraphrase": false,
+    "is_answerable": true,
     "unanswerable": false,
-    "rationale": "IniConfig.lineof() in __init__.py looks up (section, name) in self._sources and returns lineno+1 (1-indexed), or None if not found.",
+    "category": "implementation",
+    "rationale": "UTF8_BOM is defined on line 8 and removed using data.removeprefix(UTF8_BOM) on line 39.",
     "status": "reviewed",
-    "reviewed_by": "assistant-source-review"
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
   },
   {
     "id": "ini-07",
     "repo": "iniconfig",
-    "question": "Which module is responsible for tokenising raw ini text into parsed lines?",
+    "question": "What exception is raised if an INI line appears before any section header?",
+    "expected_answer_summary": "ParseError with message 'no section header defined'.",
+    "expected_sources": [
+      {
+        "file": "src/iniconfig/_parse.py",
+        "start_line": 52,
+        "end_line": 54
+      }
+    ],
     "expected_files": [
       "src/iniconfig/_parse.py"
     ],
-    "expected_line_ranges": null,
+    "expected_line_ranges": [[52, 54]],
     "difficulty": "lookup",
     "paraphrase": true,
+    "is_answerable": true,
     "unanswerable": false,
-    "rationale": "src/iniconfig/_parse.py contains parse_lines() which iterates over raw text lines and calls _parseline() to produce ParsedLine tokens.",
+    "category": "architecture",
+    "rationale": "In parse_ini_data, if section is None, it raises ParseError(path, lineno, 'no section header defined').",
     "status": "reviewed",
-    "reviewed_by": "assistant-source-review"
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
   },
   {
     "id": "ini-08",
     "repo": "iniconfig",
-    "question": "Does iniconfig expose an asynchronous API for parsing INI content?",
-    "expected_files": [],
-    "expected_line_ranges": null,
-    "difficulty": "explanation",
+    "question": "What named tuple structure is returned by parse_lines?",
+    "expected_answer_summary": "ParsedLine with fields lineno, section, name, and value.",
+    "expected_sources": [
+      {
+        "file": "src/iniconfig/_parse.py",
+        "start_line": 11,
+        "end_line": 16
+      }
+    ],
+    "expected_files": [
+      "src/iniconfig/_parse.py"
+    ],
+    "expected_line_ranges": [[11, 16]],
+    "difficulty": "lookup",
     "paraphrase": false,
-    "unanswerable": true,
-    "rationale": "The pinned source exposes synchronous parse/parse_ini_data/parse_lines functions and no asynchronous parsing API; this is an absence-of-capability question rather than a feature lookup.",
+    "is_answerable": true,
+    "unanswerable": false,
+    "category": "architecture",
+    "rationale": "ParsedLine NamedTuple defines lineno, section, name, value.",
     "status": "reviewed",
-    "reviewed_by": "assistant-source-review"
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
   },
   {
     "id": "ini-09",
     "repo": "iniconfig",
-    "question": "What happens when SectionWrapper iterates over its keys — in what order are they yielded?",
-    "expected_files": [
-      "src/iniconfig/__init__.py"
+    "question": "How does iniconfig handle duplicate section headers?",
+    "expected_answer_summary": "Raises ParseError with message 'duplicate section <section>'.",
+    "expected_sources": [
+      {
+        "file": "src/iniconfig/_parse.py",
+        "start_line": 56,
+        "end_line": 58
+      }
     ],
-    "expected_line_ranges": null,
+    "expected_files": [
+      "src/iniconfig/_parse.py"
+    ],
+    "expected_line_ranges": [[56, 58]],
     "difficulty": "explanation",
     "paraphrase": false,
+    "is_answerable": true,
     "unanswerable": false,
-    "rationale": "SectionWrapper.__iter__ in __init__.py yields keys sorted by their line number using self.config.lineof(), preserving file order.",
+    "category": "implementation",
+    "rationale": "If name is None and section in sections_data, it raises ParseError('duplicate section ...').",
     "status": "reviewed",
-    "reviewed_by": "assistant-source-review"
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
   },
   {
     "id": "ini-10",
     "repo": "iniconfig",
-    "question": "Where is duplicate section detection implemented and what error does it raise?",
-    "expected_files": [
-      "src/iniconfig/_parse.py",
-      "src/iniconfig/exceptions.py"
+    "question": "What is the return type of IniConfig.sections attribute?",
+    "expected_answer_summary": "Mapping[str, Mapping[str, str]] mapping section names to key-value dictionaries.",
+    "expected_sources": [
+      {
+        "file": "src/iniconfig/__init__.py",
+        "start_line": 121,
+        "end_line": 124
+      }
     ],
-    "expected_line_ranges": null,
-    "difficulty": "cross-file",
-    "paraphrase": true,
+    "expected_files": [
+      "src/iniconfig/__init__.py"
+    ],
+    "expected_line_ranges": [[121, 124]],
+    "difficulty": "lookup",
+    "paraphrase": false,
+    "is_answerable": true,
     "unanswerable": false,
-    "rationale": "_parse.py's parse_ini_data raises ParseError (defined in exceptions.py) with message 'duplicate section <name>' when the same section header appears twice.",
+    "category": "architecture",
+    "rationale": "self.sections is assigned the sections_data mapping.",
     "status": "reviewed",
-    "reviewed_by": "assistant-source-review"
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
   },
   {
     "id": "qs-01",
     "repo": "qs",
-    "question": "What is the default maximum nesting depth for parsing query strings?",
+    "question": "What is the default parameter limit in lib/parse.js to guard against DOS?",
+    "expected_answer_summary": "The default parameterLimit is 1000.",
+    "expected_sources": [
+      {
+        "file": "lib/parse.js",
+        "start_line": 74,
+        "end_line": 74
+      }
+    ],
     "expected_files": [
       "lib/parse.js"
     ],
-    "expected_line_ranges": null,
+    "expected_line_ranges": [[74, 74]],
     "difficulty": "lookup",
-    "paraphrase": true,
+    "paraphrase": false,
+    "is_answerable": true,
     "unanswerable": false,
-    "rationale": "lib/parse.js defines defaults.depth = 5, which is the maximum object nesting depth before further nesting is treated as a key.",
+    "category": "security",
+    "rationale": "defaults object sets parameterLimit: 1000.",
     "status": "reviewed",
-    "reviewed_by": "assistant-source-review"
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
   },
   {
     "id": "qs-02",
     "repo": "qs",
-    "question": "What default value is assigned to `defaults.parameterLimit` in `lib/parse.js`?",
+    "question": "What is the default array element limit in lib/parse.js?",
+    "expected_answer_summary": "The default arrayLimit is 20.",
+    "expected_sources": [
+      {
+        "file": "lib/parse.js",
+        "start_line": 63,
+        "end_line": 63
+      }
+    ],
     "expected_files": [
       "lib/parse.js"
     ],
-    "expected_line_ranges": null,
+    "expected_line_ranges": [[63, 63]],
     "difficulty": "lookup",
     "paraphrase": false,
+    "is_answerable": true,
     "unanswerable": false,
-    "rationale": "`lib/parse.js` declares defaults.parameterLimit = 1000 and normalization uses this value when no parameterLimit option is supplied.",
+    "category": "security",
+    "rationale": "defaults object sets arrayLimit: 20.",
     "status": "reviewed",
-    "reviewed_by": "assistant-source-review"
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
   },
   {
     "id": "qs-03",
     "repo": "qs",
-    "question": "Which encoders are exposed as `Format.RFC1738` and `Format.RFC3986` in `lib/formats.js`?",
+    "question": "What does lib/formats.js specify as the default formatting specification?",
+    "expected_answer_summary": "Format.RFC3986 is the default formatter.",
+    "expected_sources": [
+      {
+        "file": "lib/formats.js",
+        "start_line": 6,
+        "end_line": 12
+      }
+    ],
     "expected_files": [
       "lib/formats.js"
     ],
-    "expected_line_ranges": null,
+    "expected_line_ranges": [[6, 12]],
     "difficulty": "lookup",
     "paraphrase": false,
+    "is_answerable": true,
     "unanswerable": false,
-    "rationale": "`lib/formats.js` defines RFC1738 and RFC3986 and exports matching formatters; RFC3986 is the default.",
+    "category": "architecture",
+    "rationale": "module.exports default is Format.RFC3986.",
     "status": "reviewed",
-    "reviewed_by": "assistant-source-review"
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
   },
   {
     "id": "qs-04",
     "repo": "qs",
-    "question": "What mechanism does the library use to track objects that were created due to an array-limit overflow?",
-    "expected_files": [
-      "lib/utils.js"
+    "question": "How does lib/stringify.js format dates by default?",
+    "expected_answer_summary": "Using Date.prototype.toISOString via serializeDate option.",
+    "expected_sources": [
+      {
+        "file": "lib/stringify.js",
+        "start_line": 27,
+        "end_line": 51
+      }
     ],
-    "expected_line_ranges": null,
+    "expected_files": [
+      "lib/stringify.js"
+    ],
+    "expected_line_ranges": [[27, 51]],
     "difficulty": "explanation",
     "paraphrase": true,
+    "is_answerable": true,
     "unanswerable": false,
-    "rationale": "lib/utils.js uses a side-channel (overflowChannel = getSideChannel()) to store per-object max numeric index metadata without polluting object properties.",
+    "category": "implementation",
+    "rationale": "var toISO = Date.prototype.toISOString; defaults.serializeDate calls toISO.call(date).",
     "status": "reviewed",
-    "reviewed_by": "assistant-source-review"
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
   },
   {
     "id": "qs-05",
     "repo": "qs",
-    "question": "What are the four array prefix formats available when stringifying arrays?",
-    "expected_files": [
-      "lib/stringify.js"
+    "question": "Which helper module and function does the query parser use as its default decoder?",
+    "expected_answer_summary": "utils.decode from ./utils.",
+    "expected_sources": [
+      {
+        "file": "lib/parse.js",
+        "start_line": 4,
+        "end_line": 68
+      }
     ],
-    "expected_line_ranges": null,
-    "difficulty": "lookup",
+    "expected_files": [
+      "lib/parse.js"
+    ],
+    "expected_line_ranges": [[4, 68]],
+    "difficulty": "cross-file",
     "paraphrase": true,
+    "is_answerable": true,
     "unanswerable": false,
-    "rationale": "lib/stringify.js defines arrayPrefixGenerators with four entries: brackets, comma, indices, and repeat.",
+    "category": "architecture",
+    "rationale": "lib/parse.js imports utils = require('./utils') and assigns decoder: utils.decode.",
     "status": "reviewed",
-    "reviewed_by": "assistant-source-review"
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
   },
   {
     "id": "qs-06",
     "repo": "qs",
-    "question": "How does the library expose its public API — which functions or objects are exported from the main entry point?",
-    "expected_files": [
-      "lib/index.js"
+    "question": "What are the allowed array prefix generator modes in lib/stringify.js?",
+    "expected_answer_summary": "brackets, comma, indices, and repeat.",
+    "expected_sources": [
+      {
+        "file": "lib/stringify.js",
+        "start_line": 8,
+        "end_line": 19
+      }
     ],
-    "expected_line_ranges": null,
+    "expected_files": [
+      "lib/stringify.js"
+    ],
+    "expected_line_ranges": [[8, 19]],
     "difficulty": "lookup",
-    "paraphrase": true,
+    "paraphrase": false,
+    "is_answerable": true,
     "unanswerable": false,
-    "rationale": "lib/index.js exports an object with three properties: formats, parse, and stringify — the entire public surface of the library.",
+    "category": "implementation",
+    "rationale": "arrayPrefixGenerators defines brackets, comma, indices, repeat.",
     "status": "reviewed",
-    "reviewed_by": "assistant-source-review"
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
   },
   {
     "id": "qs-07",
     "repo": "qs",
-    "question": "How are date values converted to strings by default when stringifying objects?",
+    "question": "What default key-value pair delimiter is used for stringifying query strings?",
+    "expected_answer_summary": "The delimiter '&'.",
+    "expected_sources": [
+      {
+        "file": "lib/stringify.js",
+        "start_line": 38,
+        "end_line": 38
+      }
+    ],
     "expected_files": [
       "lib/stringify.js"
     ],
-    "expected_line_ranges": null,
-    "difficulty": "explanation",
-    "paraphrase": true,
+    "expected_line_ranges": [[38, 38]],
+    "difficulty": "lookup",
+    "paraphrase": false,
+    "is_answerable": true,
     "unanswerable": false,
-    "rationale": "lib/stringify.js captures toISO = Date.prototype.toISOString and uses it as the default serializer for Date values; custom serializers can be provided via options.",
+    "category": "implementation",
+    "rationale": "defaults sets delimiter: '&'.",
     "status": "reviewed",
-    "reviewed_by": "assistant-source-review"
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
   },
   {
     "id": "qs-08",
     "repo": "qs",
-    "question": "Does this repository implement automatic OAuth access-token refresh?",
-    "expected_files": [],
-    "expected_line_ranges": null,
-    "difficulty": "lookup",
+    "question": "How does lib/formats.js format percent-twenties for RFC1738 format?",
+    "expected_answer_summary": "It replaces '%20' with '+' using replace.call(value, percentTwenties, '+').",
+    "expected_sources": [
+      {
+        "file": "lib/formats.js",
+        "start_line": 14,
+        "end_line": 16
+      }
+    ],
+    "expected_files": [
+      "lib/formats.js"
+    ],
+    "expected_line_ranges": [[14, 16]],
+    "difficulty": "explanation",
     "paraphrase": false,
-    "unanswerable": true,
-    "rationale": "The pinned qs repository is a query-string parsing/stringifying library; its package metadata and source modules do not implement OAuth, access-token lifecycle, or token refresh. This tests retrieval on a topic outside the repository.",
+    "is_answerable": true,
+    "unanswerable": false,
+    "category": "implementation",
+    "rationale": "RFC1738 formatter calls replace.call(value, percentTwenties, '+').",
     "status": "reviewed",
-    "reviewed_by": "assistant-source-review"
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
   },
   {
     "id": "qs-09",
     "repo": "qs",
-    "question": "Which helper module does the query string parser import, and what function does it use from it?",
-    "expected_files": [
-      "lib/parse.js",
-      "lib/utils.js"
+    "question": "What is the default maximum parsing depth in lib/parse.js for nested objects?",
+    "expected_answer_summary": "The default depth is 5.",
+    "expected_sources": [
+      {
+        "file": "lib/parse.js",
+        "start_line": 70,
+        "end_line": 70
+      }
     ],
-    "expected_line_ranges": null,
-    "difficulty": "cross-file",
-    "paraphrase": true,
+    "expected_files": [
+      "lib/parse.js"
+    ],
+    "expected_line_ranges": [[70, 70]],
+    "difficulty": "lookup",
+    "paraphrase": false,
+    "is_answerable": true,
     "unanswerable": false,
-    "rationale": "lib/parse.js requires './utils' and uses utils.decode as the default decoder; lib/utils.js exports that decode function.",
+    "category": "security",
+    "rationale": "defaults sets depth: 5.",
     "status": "reviewed",
-    "reviewed_by": "assistant-source-review"
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
   },
   {
     "id": "qs-10",
     "repo": "qs",
-    "question": "Does qs include server-side session management or cookie handling?",
+    "question": "How does lib/parse.js handle copying arrays and plain objects before merge?",
+    "expected_answer_summary": "Using copyInput with side-channel copies to prevent prototype mutations.",
+    "expected_sources": [
+      {
+        "file": "lib/parse.js",
+        "start_line": 31,
+        "end_line": 56
+      }
+    ],
+    "expected_files": [
+      "lib/parse.js"
+    ],
+    "expected_line_ranges": [[31, 56]],
+    "difficulty": "cross-file",
+    "paraphrase": true,
+    "is_answerable": true,
+    "unanswerable": false,
+    "category": "security",
+    "rationale": "copyInput uses getSideChannel() to duplicate plain containers.",
+    "status": "reviewed",
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
+  },
+  {
+    "id": "ini-neg-01",
+    "repo": "iniconfig",
+    "question": "How does iniconfig connect to PostgreSQL databases to store configuration settings?",
+    "expected_answer_summary": "UNANSWERABLE: iniconfig is a local pure Python file parser without database connectivity or PostgreSQL integration.",
+    "expected_sources": [],
     "expected_files": [],
     "expected_line_ranges": null,
-    "difficulty": "explanation",
+    "difficulty": "lookup",
     "paraphrase": false,
+    "is_answerable": false,
     "unanswerable": true,
-    "rationale": "No session, cookie, or HTTP server code exists anywhere in lib/; qs is solely a querystring serialisation library.",
+    "category": "negative_probe",
+    "rationale": "Negative probe: tests resistance against inventing database connectivity.",
     "status": "reviewed",
-    "reviewed_by": "assistant-source-review"
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
+  },
+  {
+    "id": "ini-neg-02",
+    "repo": "iniconfig",
+    "question": "What asynchronous asyncio worker thread handles concurrent file reads in iniconfig?",
+    "expected_answer_summary": "UNANSWERABLE: iniconfig is strictly synchronous and does not use asyncio or worker threads.",
+    "expected_sources": [],
+    "expected_files": [],
+    "expected_line_ranges": null,
+    "difficulty": "lookup",
+    "paraphrase": false,
+    "is_answerable": false,
+    "unanswerable": true,
+    "category": "negative_probe",
+    "rationale": "Negative probe: tests resistance against claiming asynchronous concurrency.",
+    "status": "reviewed",
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
+  },
+  {
+    "id": "ini-neg-03",
+    "repo": "iniconfig",
+    "question": "Where is the JWT token verification function verify_bearer_token defined in iniconfig?",
+    "expected_answer_summary": "UNANSWERABLE: iniconfig contains no authentication, cryptography, or JWT functions.",
+    "expected_sources": [],
+    "expected_files": [],
+    "expected_line_ranges": null,
+    "difficulty": "lookup",
+    "paraphrase": false,
+    "is_answerable": false,
+    "unanswerable": true,
+    "category": "negative_probe",
+    "rationale": "Negative probe: tests resistance against hallucinating security auth methods.",
+    "status": "reviewed",
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
+  },
+  {
+    "id": "ini-neg-04",
+    "repo": "iniconfig",
+    "question": "Which regex does iniconfig use to parse JSON schema definitions inside INI sections?",
+    "expected_answer_summary": "UNANSWERABLE: iniconfig does not parse JSON schemas or contain JSON validation logic.",
+    "expected_sources": [],
+    "expected_files": [],
+    "expected_line_ranges": null,
+    "difficulty": "lookup",
+    "paraphrase": false,
+    "is_answerable": false,
+    "unanswerable": true,
+    "category": "negative_probe",
+    "rationale": "Negative probe: tests resistance against inventing schema parsers.",
+    "status": "reviewed",
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
+  },
+  {
+    "id": "ini-neg-05",
+    "repo": "iniconfig",
+    "question": "How does iniconfig configure AES-256 encryption for sensitive credential keys?",
+    "expected_answer_summary": "UNANSWERABLE: iniconfig has no encryption or cryptographic capabilities.",
+    "expected_sources": [],
+    "expected_files": [],
+    "expected_line_ranges": null,
+    "difficulty": "lookup",
+    "paraphrase": false,
+    "is_answerable": false,
+    "unanswerable": true,
+    "category": "negative_probe",
+    "rationale": "Negative probe: tests resistance against hallucinating encryption.",
+    "status": "reviewed",
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
+  },
+  {
+    "id": "qs-neg-01",
+    "repo": "qs",
+    "question": "Does qs implement automatic OAuth access-token refresh and token storage?",
+    "expected_answer_summary": "UNANSWERABLE: qs is solely a querystring parsing and stringifying library with no OAuth or token refresh logic.",
+    "expected_sources": [],
+    "expected_files": [],
+    "expected_line_ranges": null,
+    "difficulty": "lookup",
+    "paraphrase": false,
+    "is_answerable": false,
+    "unanswerable": true,
+    "category": "negative_probe",
+    "rationale": "Negative probe: qs has no network or OAuth code.",
+    "status": "reviewed",
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
+  },
+  {
+    "id": "qs-neg-02",
+    "repo": "qs",
+    "question": "Does qs include server-side session management, Redis clustering, or cookie handling?",
+    "expected_answer_summary": "UNANSWERABLE: qs contains no session storage, Redis clustering, or HTTP server cookie code.",
+    "expected_sources": [],
+    "expected_files": [],
+    "expected_line_ranges": null,
+    "difficulty": "lookup",
+    "paraphrase": false,
+    "is_answerable": false,
+    "unanswerable": true,
+    "category": "negative_probe",
+    "rationale": "Negative probe: qs does not manage sessions or servers.",
+    "status": "reviewed",
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
+  },
+  {
+    "id": "qs-neg-03",
+    "repo": "qs",
+    "question": "What WebSocket protocol handshake does qs use for real-time query string streaming?",
+    "expected_answer_summary": "UNANSWERABLE: qs contains no WebSocket or networking protocols.",
+    "expected_sources": [],
+    "expected_files": [],
+    "expected_line_ranges": null,
+    "difficulty": "lookup",
+    "paraphrase": false,
+    "is_answerable": false,
+    "unanswerable": true,
+    "category": "negative_probe",
+    "rationale": "Negative probe: tests WebSocket protocol hallucination.",
+    "status": "reviewed",
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
+  },
+  {
+    "id": "qs-neg-04",
+    "repo": "qs",
+    "question": "Where is the GraphQL query schema resolver implemented in the qs codebase?",
+    "expected_answer_summary": "UNANSWERABLE: qs has no GraphQL parser or schema resolver.",
+    "expected_sources": [],
+    "expected_files": [],
+    "expected_line_ranges": null,
+    "difficulty": "lookup",
+    "paraphrase": false,
+    "is_answerable": false,
+    "unanswerable": true,
+    "category": "negative_probe",
+    "rationale": "Negative probe: tests GraphQL schema resolution hallucination.",
+    "status": "reviewed",
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
+  },
+  {
+    "id": "qs-neg-05",
+    "repo": "qs",
+    "question": "How does qs validate TLS 1.3 certificates and mTLS client certificates?",
+    "expected_answer_summary": "UNANSWERABLE: qs is an offline utility that does not handle TLS sockets or certificates.",
+    "expected_sources": [],
+    "expected_files": [],
+    "expected_line_ranges": null,
+    "difficulty": "lookup",
+    "paraphrase": false,
+    "is_answerable": false,
+    "unanswerable": true,
+    "category": "negative_probe",
+    "rationale": "Negative probe: tests TLS certificate validation hallucination.",
+    "status": "reviewed",
+    "labeled_by": "assistant",
+    "reviewed_by_human": false
   }
 ]
