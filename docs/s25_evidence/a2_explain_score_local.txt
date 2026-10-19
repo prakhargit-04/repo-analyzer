@@ -1,0 +1,57 @@
+﻿============================================================
+ Health Score for: .
+============================================================
+Composite Score        : 52.11
+Status                 : partial
+Formula Version        : 2.1
+Reduced Component Set  : True
+Missing Components     : ['vulnerabilities']
+Weights Renormalized   : True
+------------------------------------------------------------
+Component        | Status      | Subscore | Base Wt | Norm Wt | Contrib
+-----------------+-------------+----------+---------+---------+--------
+complexity       | success     | 91.08    | 0.25    | 0.2632  | 23.97  
+maintainability  | success     | 66.94    | 0.25    | 0.2632  | 17.62  
+security         | success     | 0.00     | 0.20    | 0.2105  | 0.00   
+sast             | success     | 0.00     | 0.15    | 0.1579  | 0.00   
+secrets          | success     | 100.00   | 0.10    | 0.1053  | 10.53  
+vulnerabilities  | unavailable | None     | 0.05    | 0.0000  | 0.00   
+------------------------------------------------------------
+Sum of Weighted Contributions: 52.12
+
+Component Details & Penalty Arithmetic:
+  * COMPLEXITY:
+      Status             : success
+      Findings / Counts  : 223 items (A:148, B:44, C:19, D:6, E:4, F:2)
+      Penalty Arithmetic : sum(rank_points)/223
+      Sub-score          : 91.08
+  * MAINTAINABILITY:
+      Status             : success
+      Findings / Counts  : 53 files (min MI=0.0, avg MI=66.9, max MI=100.0)
+      Penalty Arithmetic : sum(MI)/53
+      Sub-score          : 66.94
+  * SECURITY:
+      Status             : success
+      Findings / Counts  : HIGH=1, MEDIUM=3, LOW=33
+      Penalty Arithmetic : max(0.0, 100 - (1*15 + 3*7 + 33*2))
+      Sub-score          : 0.00
+  * SAST:
+      Status             : success
+      Findings / Counts  : ERROR/HIGH=2, WARNING/MEDIUM=21, INFO/LOW=6
+      Penalty Arithmetic : max(0.0, 100 - (2*15 + 21*7 + 6*2))
+      Sub-score          : 0.00
+  * SECRETS:
+      Status             : success
+      Findings / Counts  : 0 secrets detected
+      Penalty Arithmetic : max(0.0, 100.0 - (25.0 * 0))
+      Sub-score          : 100.00
+  * VULNERABILITIES:
+      Status             : unavailable
+      Findings / Counts  : 0 findings
+      Penalty Arithmetic : N/A (unsupported/unavailable)
+      Sub-score          : None
+
+Score Note:
+  Score computed from a reduced component set: 5 of 6 components (missing: vulnerabilities); weights renormalized over the components scored. Call-graph resolution confidence is reported separately (graph_builder.graph_summary) and intentionally NOT blended into this score. Lizard complexity is informational only and excluded from scoring to prevent double-counting with Radon CC. 'status' reflects whether EVERY scoring component fully succeeded.
+============================================================
+

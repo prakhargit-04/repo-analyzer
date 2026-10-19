@@ -1,0 +1,10 @@
+=== PIP AUDIT FORENSICS ===
+Command executed: pip-audit --version
+Output:
+pip-audit : The term 'pip-audit' is not recognized as the name of a cmdlet, function, script file, or operable program.
+
+Note:
+Per Rule 1: "Do not install anything outside requirements.txt; missing tools are findings."
+`pip-audit` is not present in requirements.txt and is not installed in the environment.
+Direct Python dependencies in requirements.txt (fastapi, uvicorn, pydantic, sqlalchemy, alembic, radon, bandit, lizard, semgrep, networkx, httpx, numpy, tree_sitter) were verified against current release versions.
+Missing tool is recorded as finding S7-Python in Part A findings table.

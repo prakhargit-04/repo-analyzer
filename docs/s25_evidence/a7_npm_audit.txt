@@ -1,0 +1,143 @@
+﻿# npm audit report
+
+braces  *
+Severity: high
+braces vulnerable to stack-exhaustion denial of service through deeply nested patterns - https://github.com/advisories/GHSA-vfj7-8cjw-p6xm
+fix available via `npm audit fix --force`
+Will install eslint-config-next@14.2.35, which is a breaking change
+node_modules/braces
+  micromatch  >=0.2.0
+  Depends on vulnerable versions of braces
+  node_modules/micromatch
+    fast-glob  *
+    Depends on vulnerable versions of micromatch
+    node_modules/fast-glob
+      @next/eslint-plugin-next  >=14.3.0-canary.0
+      Depends on vulnerable versions of fast-glob
+      node_modules/@next/eslint-plugin-next
+        eslint-config-next  >=14.3.0-canary.0
+        Depends on vulnerable versions of @next/eslint-plugin-next
+        node_modules/eslint-config-next
+
+handlebars  3.0.0 - 4.7.9
+Severity: critical
+Handlebars: JavaScript Injection via Unsafe Inline Embedding of Precompiled Templates - https://github.com/advisories/GHSA-xw65-4hp5-5hc7
+Handlebars: JavaScript Injection via AST Type Confusion in compile (bypass of CVE-2026-33937) - https://github.com/advisories/GHSA-8r5x-fm3f-whwj
+Handlebars: JavaScript Injection via Own Property Check Bypass - https://github.com/advisories/GHSA-p8wg-vrv2-v86f
+fix available via `npm audit fix`
+node_modules/handlebars
+
+next  16.0.0 - 16.3.7
+Severity: critical
+Next.js: Remote Code Execution in next/og ImageResponse - https://github.com/advisories/GHSA-vcvr-r3jv-pc5j
+Next.js: Pending `use cache` fill can leak Draft Mode content into regular responses and persisted pages - https://github.com/advisories/GHSA-3w37-wq28-93x7
+Next.js has cache poisoning of SSG and ISR pages in self-hosted applications - https://github.com/advisories/GHSA-4jqv-mc3x-m676
+Next.js has information disclosure in development server's Model Context Protocol endpoint - https://github.com/advisories/GHSA-39w2-rjm5-chcv
+Next.js has information disclosure in App Router metadata image routes via dynamicParams bypass - https://github.com/advisories/GHSA-f87g-xv8r-7p7x
+Next.js has cache poisoning in SSG/ISR rendering that leads to cross-user content substitution and persistent denial of service - https://github.com/advisories/GHSA-mcj8-r9mp-w47p
+Next.js has Server-Side Request Forgery in Image Optimization - https://github.com/advisories/GHSA-cjq9-62q9-8jv4
+fix available via `npm audit fix --force`
+Will install next@16.4.2, which is outside the stated dependency range
+node_modules/next
+
+sharp  <0.35.5
+Severity: high
+sharp : Vulnerability in librsvg dependency CVE-2026-96889 - https://github.com/advisories/GHSA-wq5f-xc86-pv6w
+fix available via `npm audit fix`
+node_modules/sharp
+
+source-map-js  1.0.0 - 1.2.1
+Severity: high
+source-map-js allows event-loop denial of service through indexed source-map section offsets - https://github.com/advisories/GHSA-68fv-2mgg-jv7q
+fix available via `npm audit fix`
+node_modules/source-map-js
+
+sprintf-js  *
+Severity: moderate
+sprintf-js vulnerable to denial of service through unbounded precision specifiers - https://github.com/advisories/GHSA-hp3w-g68c-fv3c
+fix available via `npm audit fix --force`
+Will install ts-jest@27.0.3, which is a breaking change
+node_modules/sprintf-js
+  argparse  1.0.0 - 1.0.10
+  Depends on vulnerable versions of sprintf-js
+  node_modules/@istanbuljs/load-nyc-config/node_modules/argparse
+    js-yaml  3.2.7 - 3.15.2
+    Depends on vulnerable versions of argparse
+    node_modules/@istanbuljs/load-nyc-config/node_modules/js-yaml
+      @istanbuljs/load-nyc-config  *
+      Depends on vulnerable versions of js-yaml
+      node_modules/@istanbuljs/load-nyc-config
+        babel-plugin-istanbul  >=6.0.0-beta.0
+        Depends on vulnerable versions of @istanbuljs/load-nyc-config
+        node_modules/babel-plugin-istanbul
+          @jest/transform  >=25.1.0
+          Depends on vulnerable versions of babel-plugin-istanbul
+          node_modules/@jest/transform
+            @jest/core  >=25.1.0
+            Depends on vulnerable versions of @jest/reporters
+            Depends on vulnerable versions of @jest/transform
+            Depends on vulnerable versions of jest-config
+            Depends on vulnerable versions of jest-resolve-dependencies
+            Depends on vulnerable versions of jest-runner
+            Depends on vulnerable versions of jest-runtime
+            Depends on vulnerable versions of jest-snapshot
+            node_modules/@jest/core
+              jest  >=25.1.0
+              Depends on vulnerable versions of @jest/core
+              Depends on vulnerable versions of jest-cli
+              node_modules/jest
+                ts-jest  >=25.10.0-alpha.1
+                Depends on vulnerable versions of @jest/transform
+                Depends on vulnerable versions of babel-jest
+                Depends on vulnerable versions of jest
+                node_modules/ts-jest
+            @jest/reporters  >=25.1.0
+            Depends on vulnerable versions of @jest/transform
+            node_modules/@jest/reporters
+            jest-runner  >=25.1.0
+            Depends on vulnerable versions of @jest/transform
+            Depends on vulnerable versions of jest-runtime
+            node_modules/jest-runner
+              jest-config  >=25.1.0
+              Depends on vulnerable versions of babel-jest
+              Depends on vulnerable versions of jest-circus
+              Depends on vulnerable versions of jest-runner
+              node_modules/jest-config
+                jest-cli  >=25.1.0
+                Depends on vulnerable versions of @jest/core
+                Depends on vulnerable versions of jest-config
+                node_modules/jest-cli
+            jest-runtime  >=25.1.0
+            Depends on vulnerable versions of @jest/globals
+            Depends on vulnerable versions of @jest/transform
+            Depends on vulnerable versions of jest-snapshot
+            node_modules/jest-runtime
+              jest-circus  >=25.2.4
+              Depends on vulnerable versions of @jest/expect
+              Depends on vulnerable versions of jest-runtime
+              Depends on vulnerable versions of jest-snapshot
+              node_modules/jest-circus
+            jest-snapshot  >=27.0.0-next.0
+            Depends on vulnerable versions of @jest/transform
+            node_modules/jest-snapshot
+              @jest/expect  *
+              Depends on vulnerable versions of jest-snapshot
+              node_modules/@jest/expect
+                @jest/globals  >=28.0.0-alpha.0
+                Depends on vulnerable versions of @jest/expect
+                node_modules/@jest/globals
+              jest-resolve-dependencies  >=27.0.0-next.0
+              Depends on vulnerable versions of jest-snapshot
+              node_modules/jest-resolve-dependencies
+          babel-jest  >=25.1.0
+          Depends on vulnerable versions of @jest/transform
+          Depends on vulnerable versions of babel-plugin-istanbul
+          node_modules/babel-jest
+
+29 vulnerabilities (20 moderate, 7 high, 2 critical)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force

@@ -1,0 +1,65 @@
+Repository: https://github.com/pytest-dev/iniconfig.git
+Pinned Ref: v2.0.0
+Commit SHA: 93f5930e668c0d1ddf4597e38dd0dea4e2665e7a
+
+============================================================
+ Health Score for: C:\Users\prakh\AppData\Local\Temp\eval_repo_iniconfig_uels2pw2
+============================================================
+Composite Score        : 84.44
+Status                 : partial
+Formula Version        : 2.1
+Reduced Component Set  : True
+Missing Components     : ['vulnerabilities']
+Weights Renormalized   : True
+------------------------------------------------------------
+Component        | Status      | Subscore | Base Wt | Norm Wt | Contrib
+-----------------+-------------+----------+---------+---------+--------
+complexity       | success     | 85.00    | 0.25    | 0.2632  | 22.37  
+maintainability  | success     | 57.48    | 0.25    | 0.2632  | 15.13  
+security         | success     | 98.00    | 0.20    | 0.2105  | 20.63  
+sast             | success     | 100.00   | 0.15    | 0.1579  | 15.79  
+secrets          | success     | 100.00   | 0.10    | 0.1053  | 10.53  
+vulnerabilities  | unsupported | None     | 0.05    | 0.0000  | 0.00   
+------------------------------------------------------------
+Sum of Weighted Contributions: 84.45
+
+Component Details & Penalty Arithmetic:
+  * COMPLEXITY:
+      Status             : success
+      Findings / Counts  : 3 items (A:1, B:1, C:1)
+      Penalty Arithmetic : sum(rank_points)/3
+      Sub-score          : 85.00
+  * MAINTAINABILITY:
+      Status             : success
+      Findings / Counts  : 3 files (min MI=47.2, avg MI=57.5, max MI=67.3)
+      Penalty Arithmetic : sum(MI)/3
+      Sub-score          : 57.48
+  * SECURITY:
+      Status             : success
+      Findings / Counts  : HIGH=0, MEDIUM=0, LOW=1
+      Penalty Arithmetic : max(0.0, 100 - (0*15 + 0*7 + 1*2))
+      Sub-score          : 98.00
+  * SAST:
+      Status             : success
+      Findings / Counts  : ERROR/HIGH=0, WARNING/MEDIUM=0, INFO/LOW=0
+      Penalty Arithmetic : max(0.0, 100 - (0*15 + 0*7 + 0*2))
+      Sub-score          : 100.00
+  * SECRETS:
+      Status             : success
+      Findings / Counts  : 0 secrets detected
+      Penalty Arithmetic : max(0.0, 100.0 - (25.0 * 0))
+      Sub-score          : 100.00
+  * VULNERABILITIES:
+      Status             : unsupported
+      Findings / Counts  : 0 findings
+      Penalty Arithmetic : N/A (unsupported/unavailable)
+      Sub-score          : None
+
+Score Note:
+  Score computed from a reduced component set: 5 of 6 components (missing: vulnerabilities); weights renormalized over the components scored. Call-graph resolution confidence is reported separately (graph_builder.graph_summary) and intentionally NOT blended into this score. Lizard complexity is informational only and excluded from scoring to prevent double-counting with Radon CC. 'status' reflects whether EVERY scoring component fully succeeded.
+============================================================
+
+
+STDERR:
+C:\Users\prakh\AppData\Local\Programs\Python\Python312\Lib\site-packages\tree_sitter\__init__.py:36: FutureWarning: Language(path, name) is deprecated. Use Language(ptr, name) instead.
+  warn("{} is deprecated. Use {} instead.".format(old, new), FutureWarning)

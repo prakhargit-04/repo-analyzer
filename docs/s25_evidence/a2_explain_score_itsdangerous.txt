@@ -1,0 +1,65 @@
+Repository: https://github.com/pallets/itsdangerous.git
+Pinned Ref: 2.1.2
+Commit SHA: 49d263f60b6f78df8924be51262eeb5216ab1468
+
+============================================================
+ Health Score for: C:\Users\prakh\AppData\Local\Temp\eval_repo_itsdangerous_l5m67qsy
+============================================================
+Composite Score        : 95.51
+Status                 : partial
+Formula Version        : 2.1
+Reduced Component Set  : True
+Missing Components     : ['vulnerabilities']
+Weights Renormalized   : True
+------------------------------------------------------------
+Component        | Status      | Subscore | Base Wt | Norm Wt | Contrib
+-----------------+-------------+----------+---------+---------+--------
+complexity       | success     | 100.00   | 0.25    | 0.2632  | 26.32  
+maintainability  | success     | 84.53    | 0.25    | 0.2632  | 22.25  
+security         | success     | 98.00    | 0.20    | 0.2105  | 20.63  
+sast             | success     | 100.00   | 0.15    | 0.1579  | 15.79  
+secrets          | success     | 100.00   | 0.10    | 0.1053  | 10.53  
+vulnerabilities  | unsupported | None     | 0.05    | 0.0000  | 0.00   
+------------------------------------------------------------
+Sum of Weighted Contributions: 95.52
+
+Component Details & Penalty Arithmetic:
+  * COMPLEXITY:
+      Status             : success
+      Findings / Counts  : 7 items (A:7)
+      Penalty Arithmetic : sum(rank_points)/7
+      Sub-score          : 100.00
+  * MAINTAINABILITY:
+      Status             : success
+      Findings / Counts  : 10 files (min MI=61.1, avg MI=84.5, max MI=100.0)
+      Penalty Arithmetic : sum(MI)/10
+      Sub-score          : 84.53
+  * SECURITY:
+      Status             : success
+      Findings / Counts  : HIGH=0, MEDIUM=0, LOW=1
+      Penalty Arithmetic : max(0.0, 100 - (0*15 + 0*7 + 1*2))
+      Sub-score          : 98.00
+  * SAST:
+      Status             : success
+      Findings / Counts  : ERROR/HIGH=0, WARNING/MEDIUM=0, INFO/LOW=0
+      Penalty Arithmetic : max(0.0, 100 - (0*15 + 0*7 + 0*2))
+      Sub-score          : 100.00
+  * SECRETS:
+      Status             : success
+      Findings / Counts  : 0 secrets detected
+      Penalty Arithmetic : max(0.0, 100.0 - (25.0 * 0))
+      Sub-score          : 100.00
+  * VULNERABILITIES:
+      Status             : unsupported
+      Findings / Counts  : 0 findings
+      Penalty Arithmetic : N/A (unsupported/unavailable)
+      Sub-score          : None
+
+Score Note:
+  Score computed from a reduced component set: 5 of 6 components (missing: vulnerabilities); weights renormalized over the components scored. Call-graph resolution confidence is reported separately (graph_builder.graph_summary) and intentionally NOT blended into this score. Lizard complexity is informational only and excluded from scoring to prevent double-counting with Radon CC. 'status' reflects whether EVERY scoring component fully succeeded.
+============================================================
+
+
+STDERR:
+C:\Users\prakh\AppData\Local\Programs\Python\Python312\Lib\site-packages\tree_sitter\__init__.py:36: FutureWarning: Language(path, name) is deprecated. Use Language(ptr, name) instead.
+  warn("{} is deprecated. Use {} instead.".format(old, new), FutureWarning)

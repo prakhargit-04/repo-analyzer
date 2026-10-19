@@ -1,0 +1,36 @@
+=== A4 CACHE FRESHNESS INVESTIGATION ===
+
+1. Config Fingerprint Components:
+   - CACHE_SCHEMA_VERSION     : v6
+   - ANALYZER_VERSION         : 0.24.7
+   - SOURCE_CHUNKER_VERSION   : 1
+   - EMBEDDING_PIPELINE_VER   : 1
+   - Embedding provider_name  : test-deterministic
+   - Embedding model_name     : test-deterministic
+   - Embedding provider_ver   : 1.0
+   - semgrep_ruleset_identity : auto
+
+Default analysis_config_fingerprint: f4d9ae6e8b857f12e900798398c58e2d77c7deb10e0183edf79972604306f955
+
+2. Embedding Provider Sensitivity:
+   - EMBEDDING_PROVIDER='test': f4d9ae6e8b857f12e900798398c58e2d77c7deb10e0183edf79972604306f955
+   - Fingerprint matches default? True
+
+3. Semgrep Ruleset Sensitivity:
+   - SEMGREP_CONFIG='C:\Users\prakh\AppData\Local\Temp\tmp75c1t4x4.yaml' identity: local:a780ef2ca5d990a3da32e444d5d4c1daf87a6e2e0e1c5cd2e5199ba4a6082671
+   - Custom rule fingerprint: 6bc722646c5a3db2ccee3d14b631d502f54957d05ebb93924c43b8c288244514
+   - Custom rule fingerprint differs from default: True
+   - Edited rule file fingerprint: a79b90a40b6dee307b6d973272eaedaf171c61bb44541944ae9eab31042453e4
+   - Editing rules file changed fingerprint? True
+
+4. Analyzer Availability Sensitivity:
+   - Are analyzer versions or availability (semgrep, gitleaks, bandit, radon, lizard, osv) in analysis_config_fingerprint()?
+   - Answer: NO. The components tuple in analysis_config_fingerprint only contains: ['CACHE_SCHEMA_VERSION', 'ANALYZER_VERSION', 'SOURCE_CHUNKER_VERSION', 'EMBEDDING_PIPELINE_VERSION', 'provider_name', 'model_name', 'provider_version', 'semgrep_ruleset_identity']
+   - Implication: If an analyzer was missing (status='unavailable') when a cache entry was created, and the user subsequently installs the analyzer on the host machine, the cache key does NOT change. The pipeline will hit the existing cache and return the old result where that analyzer was unavailable!
+
+5. Commit SHA in Cache Key:
+   - Cache key for commit 11111111: c0fa99e5ea77c52e827c3d1b96e6b1ead93390b2e08fe7e6c8ecbd3dc55c6b27
+   - Cache key for commit 22222222: b8be1e9211bea4440115d2cfab1a265d96c7945a68cc75e41782d070bcbf7473
+   - Does commit SHA change the cache key? True
+   - Fresh clone uses git SHA as snapshot_id -> commit SHA is directly baked into cache key.
+   - Local path uses content-sha256 of all files -> dirty trees invalidate, identical content with different commit SHA reuses snapshot content hash unless git SHA is used.
