@@ -1,0 +1,7 @@
+[PASS] baseline: focused tests pass unmutated (27 passed, 3 warnings in 45.53s)
+[KILLED] M1 drop DB fingerprint comparison: 4 test(s) failed, 4 required
+[KILLED] M2a force_refresh does not bypass DB cache (route): 3 test(s) failed, 3 required
+[KILLED] M2b force_refresh does not bypass file cache (worker): 2 test(s) failed, 2 required
+[KILLED] M3 ignore Semgrep ruleset identity: 5 test(s) failed, 5 required
+
+All mutations killed.

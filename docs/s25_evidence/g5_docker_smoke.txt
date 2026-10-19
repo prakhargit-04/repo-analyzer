@@ -1,0 +1,14 @@
+Command: docker compose up --build -d
+Status: NOT RUN
+Reason: Docker CLI is not installed on local host.
+
+Exact output:
+docker : The term 'docker' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
+At line:1 char:1
++ docker compose version
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (docker:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+CI Docker Smoke Verification:
+Configured in .github/workflows/ci.yml under job `compose-smoke` (Ubuntu runner with pre-installed Docker daemon).

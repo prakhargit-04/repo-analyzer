@@ -1,0 +1,3 @@
+Command: python -m pyflakes pipeline/main.py pipeline/parser_interface.py pipeline/graph_builder.py
+Exit Code: 0
+Output: (zero output - clean)
