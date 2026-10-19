@@ -80,7 +80,101 @@ def kendall_tau(x: list[float], y: list[float]) -> float:
     return (concordant - discordant) / denom
 
 
-def evaluate_ratings(csv_path: str) -> dict[str, Any]:
+def join_ratings_and_scores(
+    ratings_csv_path: str,
+    scores_csv_path: str,
+) -> list[dict[str, Any]]:
+    """
+    Deterministically joins blind human ratings with algorithmic scores.
+    Keyed strictly by (repo_url, commit_sha).
+
+    Integrity checks:
+    - Rejects duplicate keys in either ratings or scores.
+    - Rejects mismatched commit SHAs for the same repository URL.
+    - Rejects unmatched rows (keys present in one file but not the other).
+    - Rejects invalid scores (missing, blank, non-numeric, or not in [0.0, 100.0]).
+    """
+    with open(ratings_csv_path, "r", encoding="utf-8") as f:
+        ratings_reader = csv.DictReader(f)
+        ratings_rows = list(ratings_reader)
+
+    ratings_map: dict[tuple[str, str], dict[str, Any]] = {}
+    ratings_url_to_sha: dict[str, str] = {}
+    for r in ratings_rows:
+        url = r.get("repo_url", "").strip()
+        sha = r.get("commit_sha", "").strip()
+        if not url or not sha:
+            raise ValueError(f"Rating row missing repo_url or commit_sha: {r}")
+        key = (url, sha)
+        if key in ratings_map:
+            raise ValueError(f"Duplicate key in ratings CSV: {key}")
+        if url in ratings_url_to_sha and ratings_url_to_sha[url] != sha:
+            raise ValueError(f"Duplicate repository URL with conflicting commit SHA in ratings CSV: {url}")
+        ratings_map[key] = r
+        ratings_url_to_sha[url] = sha
+
+    with open(scores_csv_path, "r", encoding="utf-8") as f:
+        scores_reader = csv.DictReader(f)
+        scores_rows = list(scores_reader)
+
+    scores_map: dict[tuple[str, str], float] = {}
+    scores_url_to_sha: dict[str, str] = {}
+    for r in scores_rows:
+        url = r.get("repo_url", "").strip()
+        sha = r.get("commit_sha", "").strip()
+        if not url or not sha:
+            raise ValueError(f"Score row missing repo_url or commit_sha: {r}")
+        key = (url, sha)
+        if key in scores_map:
+            raise ValueError(f"Duplicate key in scores CSV: {key}")
+        if url in scores_url_to_sha and scores_url_to_sha[url] != sha:
+            raise ValueError(f"Duplicate repository URL with conflicting commit SHA in scores CSV: {url}")
+
+        if url in ratings_url_to_sha and ratings_url_to_sha[url] != sha:
+            raise ValueError(
+                f"Mismatched commit SHA for repository '{url}': "
+                f"ratings has '{ratings_url_to_sha[url]}' but scores has '{sha}'"
+            )
+
+        raw_score = r.get("algorithmic_score", "").strip()
+        if not raw_score:
+            raise ValueError(f"Invalid algorithmic score for {key}: score is missing or blank")
+        try:
+            score_val = float(raw_score)
+        except (ValueError, TypeError) as exc:
+            raise ValueError(f"Invalid algorithmic score for {key}: '{raw_score}' is not numeric") from exc
+        if not (0.0 <= score_val <= 100.0):
+            raise ValueError(f"Invalid algorithmic score for {key}: {score_val} is out of range [0.0, 100.0]")
+
+        scores_map[key] = score_val
+        scores_url_to_sha[url] = sha
+
+    # Check unmatched rows
+    ratings_keys = set(ratings_map.keys())
+    scores_keys = set(scores_map.keys())
+    unmatched_in_ratings = ratings_keys - scores_keys
+    unmatched_in_scores = scores_keys - ratings_keys
+    if unmatched_in_ratings or unmatched_in_scores:
+        raise ValueError(
+            f"Unmatched rows between ratings and scores: "
+            f"in ratings but not scores: {unmatched_in_ratings}; "
+            f"in scores but not ratings: {unmatched_in_scores}"
+        )
+
+    # Deterministic output sorted by (url, sha)
+    joined_rows = []
+    for key in sorted(ratings_keys):
+        merged = dict(ratings_map[key])
+        merged["algorithmic_score"] = str(scores_map[key])
+        joined_rows.append(merged)
+
+    return joined_rows
+
+
+def evaluate_ratings(
+    csv_path: str,
+    scores_csv_path: str | None = None,
+) -> dict[str, Any]:
     """
     Evaluates human ratings against pipeline scores.
 
@@ -91,10 +185,14 @@ def evaluate_ratings(csv_path: str) -> dict[str, Any]:
     3. Rows with non-numeric, invalid, or out-of-range ratings/scores are excluded, and
        the excluded count is reported.
     4. Validation status requires >= 15 valid paired ratings across the full panel.
+    5. Supports scores_csv_path for deterministic post-rating join keeping reviewer CSV blind.
     """
-    with open(csv_path, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        rows = list(reader)
+    if scores_csv_path:
+        rows = join_ratings_and_scores(csv_path, scores_csv_path)
+    else:
+        with open(csv_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
 
     total_rows = len(rows)
     valid_paired_rows: list[tuple[float, float]] = []
@@ -185,10 +283,11 @@ def evaluate_ratings(csv_path: str) -> dict[str, Any]:
 def main():
     parser = argparse.ArgumentParser(description="Calculate Spearman and Kendall correlation on health ratings")
     parser.add_argument("csv_path", default="eval/health/rating_sheet.csv", nargs="?", help="Rating sheet CSV path")
+    parser.add_argument("--scores", default=None, help="Path to separate algorithmic scores CSV for deterministic join")
     parser.add_argument("--json", action="store_true", help="Output JSON format")
     args = parser.parse_args()
 
-    res = evaluate_ratings(args.csv_path)
+    res = evaluate_ratings(args.csv_path, scores_csv_path=args.scores)
 
     if not res["validated"]:
         print(res["status"])

@@ -62,6 +62,7 @@ def evaluate_rag(
     output_report: Optional[str] = "eval/results/S25E_REPORT.md",
     db_session: Optional[Any] = None,
     repo_run_map: Optional[dict[str, str]] = None,
+    max_budget_usd: float = MAX_BUDGET_USD,
 ) -> dict[str, Any]:
     """
     Evaluates RAG accuracy and hallucination rates.
@@ -74,8 +75,11 @@ def evaluate_rag(
        - Must call the real production retrieval and answer-generation pipeline.
        - If production database session or indexed analysis runs are unavailable, returns
          status 'BLOCKED' with metrics None. An API key alone NEVER produces status 'COMPLETED'.
-       - Only reports 'COMPLETED' if questions were genuinely executed against the production
-         pipeline and metrics were computed from actual responses.
+       - Tracks attempted, successful, and failed questions separately.
+       - Does NOT report 'COMPLETED' if any required question failed or was skipped. Uses
+         distinct 'PARTIAL' or 'FAILED' status.
+       - Enforces monetary budget cap (default $1.00) and max 30 questions before making
+         additional requests. Halts if budget cap is exhausted.
     """
     api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("GEMINI_API_KEY")
     if not api_key and not dry_run:
@@ -89,21 +93,31 @@ def evaluate_rag(
                 f.write(f"> {msg}\n>\n")
                 f.write("> Harness is built and verified via mock/dry run. To execute: set `OPENAI_API_KEY` or `GEMINI_API_KEY`, ensure indexed runs exist, and run `python eval/rag/eval_rag.py`.\n\n")
                 f.write("## Configured Evaluation Gates\n")
-                f.write(f"- Pinned budget: {MAX_BUDGET_QUERIES} queries max / ${MAX_BUDGET_USD:.2f} max cost\n")
+                f.write(f"- Pinned budget: {MAX_BUDGET_QUERIES} queries max / ${max_budget_usd:.2f} max cost\n")
                 f.write("- Total questions: 30 (20 answerable with line evidence, 10 unanswerable negative probes)\n")
         return {
             "status": "NOT RUN",
             "reason": "No API key set",
+            "total_questions": 0,
+            "attempted_count": 0,
+            "success_count": 0,
+            "failed_count": 0,
+            "skipped_count": 0,
+            "execution_coverage_percent": 0.0,
             "questions_evaluated": 0,
             "citation_precision": None,
             "citation_recall": None,
             "hallucination_rate_on_unanswerable": None,
+            "cost_estimate_usd": None,
+            "budget_verified": False,
         }
 
-    # Load questions
+    # Load questions (pinned budget maximum 30 questions)
     with open(questions_path, "r", encoding="utf-8") as f:
-        questions = json.load(f)[:MAX_BUDGET_QUERIES]
+        all_loaded = json.load(f)
+        questions = all_loaded[:MAX_BUDGET_QUERIES]
 
+    total_questions = len(questions)
     latencies: list[float] = []
     total_input_tokens = 0
     total_output_tokens = 0
@@ -112,10 +126,17 @@ def evaluate_rag(
     citation_recalls: list[float] = []
     unanswerable_correct = 0
     unanswerable_total = 0
-    actually_executed_count = 0
+
+    attempted_count = 0
+    success_count = 0
+    failed_count = 0
+    skipped_count = 0
+    accumulated_cost_usd = 0.0
+    budget_exhausted = False
+    budget_verified = True
 
     if dry_run:
-        print(f"Evaluating RAG harness in dry-run mode across {len(questions)} questions...")
+        print(f"Evaluating RAG harness in dry-run mode across {total_questions} questions...")
         for q in questions:
             start_time = time.perf_counter()
             q_text = q["question"]
@@ -132,13 +153,22 @@ def evaluate_rag(
         report = {
             "status": "NOT RUN (DRY RUN / MOCK ONLY)",
             "reason": "Dry-run plumbing validation only; real AI evaluation requires API key and indexed repository runs",
-            "questions_evaluated": len(questions),
+            "total_questions": total_questions,
+            "attempted_count": total_questions,
+            "success_count": total_questions,
+            "failed_count": 0,
+            "skipped_count": 0,
+            "execution_coverage_percent": 100.0,
+            "questions_evaluated": total_questions,
             "citation_precision": None,
             "citation_recall": None,
             "hallucination_rate_on_unanswerable": None,
             "latency_p50_ms": round(p50_lat, 2),
             "latency_p95_ms": round(p95_lat, 2),
             "cost_estimate_usd": round(cost_est, 6),
+            "budget_verified": True,
+            "budget_cap_usd": max_budget_usd,
+            "budget_exhausted": False,
         }
 
         if output_report:
@@ -176,10 +206,18 @@ def evaluate_rag(
             return {
                 "status": "BLOCKED",
                 "reason": msg,
+                "total_questions": total_questions,
+                "attempted_count": 0,
+                "success_count": 0,
+                "failed_count": 0,
+                "skipped_count": total_questions,
+                "execution_coverage_percent": 0.0,
                 "questions_evaluated": 0,
                 "citation_precision": None,
                 "citation_recall": None,
                 "hallucination_rate_on_unanswerable": None,
+                "cost_estimate_usd": None,
+                "budget_verified": False,
             }
 
     # Resolve active run_ids for the evaluation repositories
@@ -213,21 +251,42 @@ def evaluate_rag(
         return {
             "status": "BLOCKED",
             "reason": msg,
+            "total_questions": total_questions,
+            "attempted_count": 0,
+            "success_count": 0,
+            "failed_count": 0,
+            "skipped_count": total_questions,
+            "execution_coverage_percent": 0.0,
             "questions_evaluated": 0,
             "citation_precision": None,
             "citation_recall": None,
             "hallucination_rate_on_unanswerable": None,
+            "cost_estimate_usd": None,
+            "budget_verified": False,
         }
 
-    print(f"Executing genuine RAG evaluation across {len(questions)} questions using real pipeline...")
+    print(f"Executing genuine RAG evaluation across {total_questions} questions using real pipeline...")
 
-    for q in questions:
-        start_time = time.perf_counter()
+    # Single-query conservative token estimate for budget guarding
+    # ~1200 prompt tokens (system + context) and ~250 output tokens
+    single_query_est_cost = (1200 / 1000.0 * INPUT_COST_PER_1K) + (250 / 1000.0 * OUTPUT_COST_PER_1K)
+
+    for q_idx, q in enumerate(questions):
         q_repo = q.get("repo")
         run_id = resolved_run_map.get(q_repo)
         if not run_id:
+            skipped_count += 1
             continue
 
+        # Enforce budget cap before issuing additional request
+        if accumulated_cost_usd + single_query_est_cost > max_budget_usd:
+            print(f"Budget cap reached: accumulated ${accumulated_cost_usd:.4f} + next query est ${single_query_est_cost:.4f} > ${max_budget_usd:.2f}. Halting further requests.")
+            budget_exhausted = True
+            skipped_count += (total_questions - q_idx)
+            break
+
+        attempted_count += 1
+        start_time = time.perf_counter()
         q_text = q["question"]
         is_answerable = q.get("is_answerable", not q.get("unanswerable", False))
         exp_files = set(q.get("expected_files", []))
@@ -236,10 +295,20 @@ def evaluate_rag(
             resp = answer_repository_question(session, run_id=run_id, question=q_text, top_k=5)
             duration_ms = (time.perf_counter() - start_time) * 1000
             latencies.append(duration_ms)
-            actually_executed_count += 1
 
-            citations = resp.get("citations", [])
-            answer_text = resp.get("answer", "")
+            citations = resp.get("citations", []) if isinstance(resp, dict) else []
+            answer_text = resp.get("answer", "") if isinstance(resp, dict) else ""
+
+            # Token and cost accounting
+            usage = resp.get("usage") if isinstance(resp, dict) else None
+            if usage and isinstance(usage, dict) and "prompt_tokens" in usage and "completion_tokens" in usage:
+                in_tok = usage["prompt_tokens"]
+                out_tok = usage["completion_tokens"]
+            else:
+                in_tok = len(q_text.split()) * 4 + 800
+                out_tok = len(answer_text.split()) * 4
+            query_cost = (in_tok / 1000.0 * INPUT_COST_PER_1K) + (out_tok / 1000.0 * OUTPUT_COST_PER_1K)
+            accumulated_cost_usd += query_cost
 
             if is_answerable:
                 if citations:
@@ -255,18 +324,30 @@ def evaluate_rag(
                 if check_unanswerable_refusal(answer_text):
                     unanswerable_correct += 1
 
+            success_count += 1
+
         except Exception as exc:
             print(f"Question {q.get('id')} execution error: {exc}")
+            failed_count += 1
 
-    if actually_executed_count == 0:
-        return {
-            "status": "BLOCKED",
-            "reason": "No questions were successfully answered by the production pipeline.",
-            "questions_evaluated": 0,
-            "citation_precision": None,
-            "citation_recall": None,
-            "hallucination_rate_on_unanswerable": None,
-        }
+    coverage_pct = round(success_count / total_questions * 100, 1) if total_questions else 0.0
+
+    # Determine status strictly
+    if attempted_count == 0:
+        status_str = "BLOCKED"
+        reason_str = "No questions were attempted"
+    elif success_count == total_questions and failed_count == 0 and skipped_count == 0:
+        status_str = "COMPLETED"
+        reason_str = "All questions successfully executed against production pipeline"
+    elif success_count > 0 and (failed_count > 0 or skipped_count > 0):
+        status_str = "PARTIAL"
+        reason_str = f"Partial execution: {success_count} succeeded, {failed_count} failed, {skipped_count} skipped"
+    elif attempted_count > 0 and success_count == 0:
+        status_str = "FAILED"
+        reason_str = f"All {attempted_count} attempted questions failed"
+    else:
+        status_str = "BLOCKED"
+        reason_str = "Execution could not complete"
 
     p50_lat = median(latencies) if latencies else 0.0
     p95_lat = quantiles(latencies, n=20)[18] if len(latencies) >= 20 else (max(latencies) if latencies else 0.0)
@@ -279,29 +360,46 @@ def evaluate_rag(
     )
 
     report = {
-        "status": "COMPLETED",
-        "questions_evaluated": actually_executed_count,
+        "status": status_str,
+        "reason": reason_str,
+        "total_questions": total_questions,
+        "attempted_count": attempted_count,
+        "success_count": success_count,
+        "failed_count": failed_count,
+        "skipped_count": skipped_count,
+        "execution_coverage_percent": coverage_pct,
+        "questions_evaluated": success_count,
         "citation_precision": avg_precision,
         "citation_recall": avg_recall,
         "hallucination_rate_on_unanswerable": hallucination_rate,
-        "latency_p50_ms": round(p50_lat, 2),
-        "latency_p95_ms": round(p95_lat, 2),
-        "cost_estimate_usd": 0.0,
+        "latency_p50_ms": round(p50_lat, 2) if latencies else None,
+        "latency_p95_ms": round(p95_lat, 2) if latencies else None,
+        "cost_estimate_usd": round(accumulated_cost_usd, 6) if budget_verified else None,
+        "budget_verified": budget_verified,
+        "budget_cap_usd": max_budget_usd,
+        "budget_exhausted": budget_exhausted,
     }
 
     if output_report:
         os.makedirs(os.path.dirname(output_report), exist_ok=True)
         with open(output_report, "w", encoding="utf-8") as f:
             f.write("# RAG Accuracy Evaluation Report (Session 25 Part E)\n\n")
-            f.write(f"**Status:** {report['status']} (genuinely executed against production pipeline)\n\n")
+            f.write(f"**Status:** {report['status']} ({report['reason']})\n\n")
             f.write("| Metric | Result |\n")
             f.write("| :--- | :--- |\n")
-            f.write(f"| **Questions Evaluated** | {report['questions_evaluated']} |\n")
+            f.write(f"| **Total Questions** | {report['total_questions']} |\n")
+            f.write(f"| **Attempted** | {report['attempted_count']} |\n")
+            f.write(f"| **Successful** | {report['success_count']} |\n")
+            f.write(f"| **Failed** | {report['failed_count']} |\n")
+            f.write(f"| **Skipped** | {report['skipped_count']} |\n")
+            f.write(f"| **Execution Coverage** | {report['execution_coverage_percent']}% |\n")
             f.write(f"| **Citation Precision** | {report['citation_precision']*100:.1f}% |\n" if report['citation_precision'] is not None else "| **Citation Precision** | N/A |\n")
             f.write(f"| **Citation Recall** | {report['citation_recall']*100:.1f}% |\n" if report['citation_recall'] is not None else "| **Citation Recall** | N/A |\n")
             f.write(f"| **Hallucination Rate (Unanswerable)** | {report['hallucination_rate_on_unanswerable']*100:.1f}% |\n" if report['hallucination_rate_on_unanswerable'] is not None else "| **Hallucination Rate (Unanswerable)** | N/A |\n")
-            f.write(f"| **Latency p50** | {report['latency_p50_ms']} ms |\n")
-            f.write(f"| **Latency p95** | {report['latency_p95_ms']} ms |\n")
+            f.write(f"| **Latency p50** | {report['latency_p50_ms']} ms |\n" if report['latency_p50_ms'] is not None else "| **Latency p50** | N/A |\n")
+            f.write(f"| **Latency p95** | {report['latency_p95_ms']} ms |\n" if report['latency_p95_ms'] is not None else "| **Latency p95** | N/A |\n")
+            f.write(f"| **Estimated Cost** | ${report['cost_estimate_usd']:.6f} |\n" if report['cost_estimate_usd'] is not None else "| **Estimated Cost** | N/A (unverified) |\n")
+            f.write(f"| **Budget Exhausted** | {report['budget_exhausted']} |\n")
 
     return report
 

@@ -53,14 +53,41 @@ def generate_rating_sheet(output_csv: str = "eval/health/rating_sheet.csv") -> l
     return rows
 
 
+def export_algorithmic_scores(
+    output_csv: str = "eval/health/algorithmic_scores.csv",
+    scores_map: dict[tuple[str, str], float] | None = None,
+) -> str:
+    """
+    Outputs a separate CSV with algorithmic health scores.
+    Keeps algorithmic scores isolated from the reviewer-facing sheet to preserve blind protocol.
+    """
+    os.makedirs(os.path.dirname(os.path.abspath(output_csv)), exist_ok=True)
+    with open(output_csv, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["repo_url", "commit_sha", "algorithmic_score"])
+        if scores_map:
+            for (url, sha), score in sorted(scores_map.items()):
+                writer.writerow([url, sha, f"{float(score):.2f}"])
+        else:
+            for url, sha, _ in DEFAULT_CANDIDATES:
+                writer.writerow([url, sha, ""])
+    return output_csv
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Generate blind human rating sheet for health score validation")
-    parser.add_argument("--output", default="eval/health/rating_sheet.csv", help="Output CSV path")
+    parser = argparse.ArgumentParser(description="Generate blind human rating sheet or separate score export for health score validation")
+    parser.add_argument("--output", default="eval/health/rating_sheet.csv", help="Output rating sheet CSV path")
+    parser.add_argument("--export-scores", default=None, help="Output path to export separate algorithmic scores CSV")
     args = parser.parse_args()
 
-    rows = generate_rating_sheet(args.output)
-    print(f"Generated blank rating sheet with {len(rows)} repositories at {args.output}.")
+    if args.export_scores:
+        out = export_algorithmic_scores(args.export_scores)
+        print(f"Exported algorithmic scores template to {out}.")
+    else:
+        rows = generate_rating_sheet(args.output)
+        print(f"Generated blank blind rating sheet with {len(rows)} repositories at {args.output}.")
 
 
 if __name__ == "__main__":
     main()
+

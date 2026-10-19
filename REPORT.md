@@ -109,48 +109,56 @@ Formula issues identified during Part A forensics are pre-registered in `docs/S2
 
 ---
 
-## 6. Session 25.2 — Evaluation Integrity Closures & Verification Gate
+## 6. Session 25.2 & 25.3 — Evaluation Integrity Closures & Verification Gate
 
 All remaining evaluation integrity blockers have been resolved and verified via regression tests:
 
-### 1. RAG Evaluation False-Completion Guard (`eval/rag/eval_rag.py`)
+### 1. RAG Completion Status & Coverage Tracking (`eval/rag/eval_rag.py`)
 - **Status:** **CLOSED / VERIFIED**
-- Real mode now connects to the production pipeline (`answer_repository_question`) and searches for indexed repository analysis runs in the database.
-- If an API key is present but analysis runs are missing or the database is unavailable, the evaluation fails closed with `status: "BLOCKED"` and all accuracy metrics set to `None`. An API key alone **cannot** produce a false `COMPLETED` status.
-- When no API key is present, it returns `status: "NOT RUN"` with metrics `None`.
-- Dry-run mode is strictly marked as `status: "NOT RUN (DRY RUN / MOCK ONLY)"` with accuracy metrics `None`.
-- Regression tests added in `tests/test_s25_eval_rag_integrity.py` (4 tests passing).
+- Separate tracking for `attempted_count`, `success_count`, `failed_count`, `skipped_count`, and `execution_coverage_percent`.
+- Fails closed: never reports `COMPLETED` if any question fails or is skipped. Uses distinct `PARTIAL` status for mixed results, `FAILED` if all attempted fail, and `BLOCKED` if no questions can be attempted.
+- Regression tests in `tests/test_s25_eval_rag_integrity.py` verify 1 success + 1 failure (`PARTIAL`), all failures (`FAILED`), and full success (`COMPLETED`).
 
-### 2. Health Correlation Input Integrity (`eval/health/correlation.py`)
+### 2. RAG Monetary Budget & Token Accounting (`eval/rag/eval_rag.py`)
 - **Status:** **CLOSED / VERIFIED**
-- Completely eliminated the fabricated `algorithmic_score=50.0` fallback.
-- Enforces strict range validation (`1.0 <= human_rating <= 5.0`, `0.0 <= algorithmic_score <= 100.0`).
-- Blank human ratings are tallied as `unreviewed_count`.
-- Missing, blank, or non-numeric algorithmic scores, as well as out-of-range values, are excluded and tallied in `excluded_count`.
-- Enforces pre-registered quorum: `is_fully_validated` is only true if $\ge 15$ valid paired ratings exist, with zero unreviewed and zero excluded rows.
-- Regression tests added in `tests/test_health_eval_correlation.py` covering missing scores, blank scores, out-of-range ratings, constant scores, and sample counts $<15$ (10 tests passing).
+- Removed the misleading live `cost_estimate_usd: 0.0`.
+- Implemented real token accounting and cost tracking using pricing models ($0.00015/1k input, $0.00060/1k output tokens).
+- Pre-request budget gate: checks whether `accumulated_cost_usd + next_query_est > max_budget_usd` ($1.00 max cap) before dispatching any request. If the cap is reached, halts further requests, flags `budget_exhausted: True`, and marks remaining questions as skipped.
+- Regression test `test_rag_budget_exhaustion_stops_requests` proves that no additional requests occur after budget exhaustion.
 
-### 3. Benchmark Candidate List Repaired (`eval/health/rating_sheet.py`, `eval/health/CANDIDATES.md`)
+### 3. Blind Rating Integration & Deterministic Join (`eval/health/rating_sheet.py`, `eval/health/correlation.py`)
+- **Status:** **CLOSED / VERIFIED**
+- Algorithmic scores are kept strictly out of the reviewer-facing CSV (`eval/health/rating_sheet.csv`) to preserve double-blind integrity.
+- Separate score export function `export_algorithmic_scores` provided in `rating_sheet.py`.
+- Deterministic post-rating join implemented in `join_ratings_and_scores` keyed strictly by `(repo_url, commit_sha)`.
+- Validates and rejects:
+  - Duplicate keys in either ratings or scores CSVs (`test_join_rejects_duplicate_keys_*`).
+  - Mismatched commit SHAs for the same repository URL (`test_join_rejects_mismatched_commit_sha`).
+  - Unmatched rows between ratings and scores (`test_join_rejects_unmatched_rows`).
+  - Missing, blank, non-numeric, or out-of-range algorithmic scores (`test_join_rejects_invalid_score`).
+- Integration test `test_deterministic_join_valid_and_blind` verifies end-to-end blind workflow and correlation calculation.
+
+### 4. Benchmark Candidate List Repaired (`eval/health/rating_sheet.py`, `eval/health/CANDIDATES.md`)
 - **Status:** **CLOSED / VERIFIED**
 - Replaced dead/placeholder URLs (such as `OWASP/BenchmarkUtils`) with the official `OWASP-Benchmark/BenchmarkJava`.
 - Pinned and verified real, accessible full 40-character commit SHAs across all 15 repositories using `git ls-remote`.
-- Saved reproducible verification evidence to `docs/s25_evidence/candidate_sha_verification.txt`.
-- Stripped all quality hints (e.g. `(High)`, `(Medium)`, `(Low)`) from the reviewer-facing candidate list and CSV to preserve double-blind integrity.
-- Regenerated `eval/health/rating_sheet.csv`.
+- Verification evidence saved in `docs/s25_evidence/candidate_sha_verification.txt`.
+- Stripped all quality hints (e.g. `(High)`, `(Medium)`, `(Low)`) from the reviewer-facing candidate list and CSV.
 
-### 4. Sensitivity Analysis Clarified (`eval/health/sensitivity.py`)
+### 5. Sensitivity Analysis Clarified (`eval/health/sensitivity.py`)
 - **Status:** **CLOSED / VERIFIED**
 - Formally labeled output as **Composite-Score Drift Analysis (Component Weight Volatility)**.
-- Clarified in output headers and documentation that it analyzes single-profile composite drift and does NOT measure cohort ranking stability across multiple repositories.
+- Clarified that it analyzes single-profile composite drift and does NOT measure cohort ranking stability across multiple repositories.
 - Production weights (`DEFAULT_WEIGHTS_V2`) remain untouched.
 
 ### Summary Verification Status Table
 
 | Area | Code / Harness Status | Empirical Evaluation Status | Notes |
 | :--- | :--- | :--- | :--- |
-| **RAG Evaluation** | **PASSED** (Harness hardened & guarded) | **NOT RUN** (Pending live LLM provider keys & indexed runs) | Fails closed with `BLOCKED`/`NOT RUN` |
-| **Health Correlation** | **PASSED** (Input integrity & quorum enforced) | **NOT RUN** (Pending human blind ratings) | $n=0$ reviewed, requires $n \ge 15$ |
+| **RAG Evaluation** | **PASSED** (Coverage tracking & $1.00 budget gate verified) | **NOT RUN** (Pending live LLM provider keys & indexed runs) | Fails closed with `BLOCKED`/`NOT RUN`/`PARTIAL` |
+| **Health Correlation** | **PASSED** (Blind sheet, deterministic join & quorum enforced) | **NOT RUN** (Pending human blind ratings) | $n=0$ reviewed, requires $n \ge 15$ |
 | **Benchmark Candidates** | **PASSED** (All 15 SHAs verified via `git ls-remote`) | **N/A** (Dataset definition complete) | Evidence in `docs/s25_evidence/candidate_sha_verification.txt` |
 | **Sensitivity Analysis** | **PASSED** (Explicitly labeled as composite drift) | **N/A** (Deterministic analysis) | Production weights preserved |
 | **Graph Precision/Recall** | **PASSED** (Recall None without FN markers; Wilson CI) | **NOT RUN** (Pending human edge labels) | Double-blind sample sheets ready |
+
 

@@ -109,3 +109,207 @@ def test_database_connection_failure_yields_blocked_not_completed(monkeypatch):
         assert result["citation_precision"] is None
         assert result["citation_recall"] is None
         assert result["hallucination_rate_on_unanswerable"] is None
+
+
+def test_rag_status_one_success_one_failure_yields_partial(monkeypatch, tmp_path):
+    """
+    Regression test: When 1 question succeeds and 1 fails, status must be PARTIAL,
+    never COMPLETED. Attempted, success, and failed counts must be tracked accurately.
+    """
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-mock-key")
+
+    import json
+    q_file = tmp_path / "questions_two.json"
+    q_file.write_text(json.dumps([
+        {
+            "id": "q1",
+            "repo": "iniconfig",
+            "question": "Where is parse defined?",
+            "is_answerable": True,
+            "expected_files": ["src/iniconfig/__init__.py"]
+        },
+        {
+            "id": "q2",
+            "repo": "iniconfig",
+            "question": "Where is error defined?",
+            "is_answerable": True,
+            "expected_files": ["src/iniconfig/__init__.py"]
+        }
+    ]), encoding="utf-8")
+
+    mock_session = MagicMock()
+    call_count = 0
+
+    def mock_answer(session, run_id, question, top_k):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return {
+                "answer": "Defined in iniconfig [E1]",
+                "citations": [{"file_path": "src/iniconfig/__init__.py", "start_line": 1, "end_line": 10}],
+            }
+        else:
+            raise RuntimeError("Provider timeout or network error")
+
+    with patch("rag.service.answer_repository_question", side_effect=mock_answer):
+        result = evaluate_rag(
+            questions_path=str(q_file),
+            dry_run=False,
+            output_report=None,
+            db_session=mock_session,
+            repo_run_map={"iniconfig": "run-test-123"},
+        )
+
+        assert result["status"] == "PARTIAL"
+        assert result["total_questions"] == 2
+        assert result["attempted_count"] == 2
+        assert result["success_count"] == 1
+        assert result["failed_count"] == 1
+        assert result["skipped_count"] == 0
+        assert result["execution_coverage_percent"] == 50.0
+        assert result["citation_precision"] == 1.0
+
+
+def test_rag_status_all_failures_yields_failed(monkeypatch, tmp_path):
+    """
+    Regression test: When all attempted questions fail, status must be FAILED.
+    """
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-mock-key")
+
+    import json
+    q_file = tmp_path / "questions_fail.json"
+    q_file.write_text(json.dumps([
+        {
+            "id": "q1",
+            "repo": "iniconfig",
+            "question": "Where is parse defined?",
+            "is_answerable": True,
+            "expected_files": ["src/iniconfig/__init__.py"]
+        },
+        {
+            "id": "q2",
+            "repo": "iniconfig",
+            "question": "Where is error defined?",
+            "is_answerable": True,
+            "expected_files": ["src/iniconfig/__init__.py"]
+        }
+    ]), encoding="utf-8")
+
+    mock_session = MagicMock()
+
+    with patch("rag.service.answer_repository_question", side_effect=RuntimeError("Provider network error")):
+        result = evaluate_rag(
+            questions_path=str(q_file),
+            dry_run=False,
+            output_report=None,
+            db_session=mock_session,
+            repo_run_map={"iniconfig": "run-test-123"},
+        )
+
+        assert result["status"] == "FAILED"
+        assert result["total_questions"] == 2
+        assert result["attempted_count"] == 2
+        assert result["success_count"] == 0
+        assert result["failed_count"] == 2
+        assert result["execution_coverage_percent"] == 0.0
+        assert result["citation_precision"] is None
+
+
+def test_rag_status_full_success_yields_completed(monkeypatch, tmp_path):
+    """
+    Regression test: When all questions succeed, status is COMPLETED.
+    """
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-mock-key")
+
+    import json
+    q_file = tmp_path / "questions_success.json"
+    q_file.write_text(json.dumps([
+        {
+            "id": "q1",
+            "repo": "iniconfig",
+            "question": "Where is parse defined?",
+            "is_answerable": True,
+            "expected_files": ["src/iniconfig/__init__.py"]
+        },
+        {
+            "id": "q2",
+            "repo": "iniconfig",
+            "question": "Negative unanswerable probe?",
+            "is_answerable": False,
+            "expected_files": []
+        }
+    ]), encoding="utf-8")
+
+    mock_session = MagicMock()
+
+    def mock_answer(session, run_id, question, top_k):
+        if "Negative" in question:
+            return {"answer": "Not found in repository", "citations": []}
+        return {
+            "answer": "Defined here [E1]",
+            "citations": [{"file_path": "src/iniconfig/__init__.py", "start_line": 1, "end_line": 10}],
+        }
+
+    with patch("rag.service.answer_repository_question", side_effect=mock_answer):
+        result = evaluate_rag(
+            questions_path=str(q_file),
+            dry_run=False,
+            output_report=None,
+            db_session=mock_session,
+            repo_run_map={"iniconfig": "run-test-123"},
+        )
+
+        assert result["status"] == "COMPLETED"
+        assert result["total_questions"] == 2
+        assert result["attempted_count"] == 2
+        assert result["success_count"] == 2
+        assert result["failed_count"] == 0
+        assert result["skipped_count"] == 0
+        assert result["execution_coverage_percent"] == 100.0
+        assert result["citation_precision"] == 1.0
+        assert result["hallucination_rate_on_unanswerable"] == 0.0
+        assert result["cost_estimate_usd"] is not None
+        assert result["cost_estimate_usd"] > 0.0
+
+
+def test_rag_budget_exhaustion_stops_requests(monkeypatch, tmp_path):
+    """
+    Regression test: Enforces monetary budget cap. When budget is exhausted,
+    no further requests may be sent, remaining questions must be skipped,
+    and budget_exhausted flag must be True.
+    """
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-mock-key")
+
+    import json
+    q_file = tmp_path / "questions_budget.json"
+    # Create 5 questions
+    q_file.write_text(json.dumps([
+        {"id": f"q{i}", "repo": "iniconfig", "question": f"Question {i}?", "is_answerable": True, "expected_files": []}
+        for i in range(5)
+    ]), encoding="utf-8")
+
+    mock_session = MagicMock()
+    call_count = 0
+
+    def mock_answer(session, run_id, question, top_k):
+        nonlocal call_count
+        call_count += 1
+        return {"answer": "Sample answer", "citations": []}
+
+    with patch("rag.service.answer_repository_question", side_effect=mock_answer):
+        # Very tiny budget (e.g. $0.0004) allows at most 1 call before next estimate exceeds cap
+        result = evaluate_rag(
+            questions_path=str(q_file),
+            dry_run=False,
+            output_report=None,
+            db_session=mock_session,
+            repo_run_map={"iniconfig": "run-test-123"},
+            max_budget_usd=0.0004,
+        )
+
+        # Call count must be stopped before all 5 questions are issued
+        assert call_count <= 2
+        assert result["budget_exhausted"] is True
+        assert result["skipped_count"] >= 3
+        assert result["status"] == "PARTIAL"
+
