@@ -86,6 +86,21 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000), submit a GitHub repository URL, and explore the dashboard.
 
+### Docker Compose (Full Stack)
+
+Run backend, frontend, and PostgreSQL together with health checks:
+
+```bash
+# Copy and configure environment variables
+cp .env.example .env
+
+# Build and start all services (db, backend, frontend)
+docker compose up --build
+
+# Backend will be available at http://localhost:8000
+# Frontend dashboard will be available at http://localhost:3000
+```
+
 ### CLI (local-path mode, for development)
 
 ```bash

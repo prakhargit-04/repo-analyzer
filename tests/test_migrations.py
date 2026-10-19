@@ -136,3 +136,19 @@ def test_create_all_column_shim_idempotency_and_reraise(tmp_path, caplog):
     finally:
         _eng_mod.Base.metadata.create_all = original_create_all
 
+
+def test_postgres_migration_live():
+    """If DATABASE_URL points to postgres, verify full migration lifecycle against real PostgreSQL."""
+    db_url = os.environ.get("DATABASE_URL", "")
+    if not db_url.startswith("postgresql"):
+        pytest.skip("DATABASE_URL is not set to a postgresql instance")
+    config = _get_alembic_config(db_url)
+    command.upgrade(config, "head")
+    engine = create_engine(db_url)
+    inspector = inspect(engine)
+    tables = inspector.get_table_names()
+    assert "analysis_runs" in tables
+    assert "graph_nodes" in tables
+    assert "graph_edges" in tables
+    assert "findings" in tables
+
