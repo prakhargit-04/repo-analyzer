@@ -1,0 +1,78 @@
+# Candidate SHA Verification Evidence
+# Generated: 2026-10-19
+# Method: Verified via git ls-remote against remote repository references.
+
+Repo 1: iniconfig
+URL: https://github.com/pytest-dev/iniconfig
+Pinned SHA: 93f5930e668c0d1ddf4597e38dd0dea4e2665e7a
+Verified: Remote HEAD / main ref resolves to 93f5930e668c0d1ddf4597e38dd0dea4e2665e7a
+
+Repo 2: itsdangerous
+URL: https://github.com/pallets/itsdangerous
+Pinned SHA: 096c8d42545d3b68ea21a4f890fb2b2d8979c0bd
+Verified: Remote HEAD / main ref resolves to 096c8d42545d3b68ea21a4f890fb2b2d8979c0bd
+
+Repo 3: requests
+URL: https://github.com/psf/requests
+Pinned SHA: 0e322af87745eff34caffe4df68456ebc20d9068
+Verified: Remote HEAD / main ref resolves to 0e322af87745eff34caffe4df68456ebc20d9068
+
+Repo 4: urllib3
+URL: https://github.com/urllib3/urllib3
+Pinned SHA: 27e2a5c5a7ab6a517252cc8dcef3ffa6ffb8f61a
+Verified: Remote HEAD / main ref resolves to 27e2a5c5a7ab6a517252cc8dcef3ffa6ffb8f61a
+
+Repo 5: bottle
+URL: https://github.com/bottlepy/bottle
+Pinned SHA: ab49e0c22491f8acfcb02e4a7b8c648843268233
+Verified: Remote HEAD / master ref resolves to ab49e0c22491f8acfcb02e4a7b8c648843268233
+
+Repo 6: flask
+URL: https://github.com/pallets/flask
+Pinned SHA: c12a5d874c5a014495eb2db8a73f40037bc813ac
+Verified: Remote HEAD / main ref resolves to c12a5d874c5a014495eb2db8a73f40037bc813ac
+
+Repo 7: marshmallow
+URL: https://github.com/marshmallow-code/marshmallow
+Pinned SHA: b9646e326c511c11fc07aef4aa0004c14a5d454c
+Verified: Remote HEAD / dev ref resolves to b9646e326c511c11fc07aef4aa0004c14a5d454c
+
+Repo 8: click
+URL: https://github.com/pallets/click
+Pinned SHA: 874ca2bc1c30d93a4ac6e36a15ed685eafe89097
+Verified: Remote HEAD / main ref resolves to 874ca2bc1c30d93a4ac6e36a15ed685eafe89097
+
+Repo 9: werkzeug
+URL: https://github.com/pallets/werkzeug
+Pinned SHA: f9995e967979eb694d6b31536cc65314fd7e9c8c
+Verified: Remote HEAD / main ref resolves to f9995e967979eb694d6b31536cc65314fd7e9c8c
+
+Repo 10: httpx
+URL: https://github.com/encode/httpx
+Pinned SHA: 326b9431c761e1ef1e00b9f760d1f654c8db48c6
+Verified: Remote HEAD / master ref resolves to 326b9431c761e1ef1e00b9f760d1f654c8db48c6
+
+Repo 11: nodegoat
+URL: https://github.com/OWASP/NodeGoat
+Pinned SHA: c5cb68a7084e4ae7dcc60e6a98768720a81841e8
+Verified: Remote HEAD / master ref resolves to c5cb68a7084e4ae7dcc60e6a98768720a81841e8
+
+Repo 12: benchmarkjava (replaces deleted OWASP/BenchmarkUtils)
+URL: https://github.com/OWASP-Benchmark/BenchmarkJava
+Pinned SHA: bc5ffeb09fb18ab039806d84ca1f718c2e332c54
+Verified: Remote HEAD / master ref resolves to bc5ffeb09fb18ab039806d84ca1f718c2e332c54
+
+Repo 13: juice-shop
+URL: https://github.com/juice-shop/juice-shop
+Pinned SHA: 39b46860612990ae18d499a20472172839fe8c77
+Verified: Remote HEAD / master ref resolves to 39b46860612990ae18d499a20472172839fe8c77
+
+Repo 14: vulhub
+URL: https://github.com/vulhub/vulhub
+Pinned SHA: 9b90d4276f84feed6333286afeb7e1250379a1da
+Verified: Remote HEAD / master ref resolves to 9b90d4276f84feed6333286afeb7e1250379a1da
+
+Repo 15: webgoat
+URL: https://github.com/WebGoat/WebGoat
+Pinned SHA: 5357a65e054976cd7d79b81ef3906ded050ed921
+Verified: Remote HEAD / main ref resolves to 5357a65e054976cd7d79b81ef3906ded050ed921

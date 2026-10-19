@@ -86,6 +86,8 @@ def run_sensitivity_analysis(
     ranked = sorted(results.items(), key=lambda x: x[1]["max_drift"], reverse=True)
 
     return {
+        "analysis_type": "composite_score_drift_analysis",
+        "description": "Measures single-profile composite score drift under +/- weight perturbations. Not cohort ranking stability.",
         "base_score": round(base_score, 2),
         "subscores": scores,
         "perturbation_percent": perturbation * 100,
@@ -102,7 +104,7 @@ def run_sensitivity_analysis(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Analyze health score sensitivity to weight perturbations")
+    parser = argparse.ArgumentParser(description="Analyze health score composite-score drift under weight perturbations (volatility analysis)")
     parser.add_argument("--complexity", type=float, default=85.0, help="Complexity subscore (0-100)")
     parser.add_argument("--maintainability", type=float, default=95.0, help="Maintainability subscore (0-100)")
     parser.add_argument("--security", type=float, default=70.0, help="Security (Bandit) subscore (0-100)")
@@ -127,16 +129,19 @@ def main():
     if args.json:
         print(json.dumps(report, indent=2))
     else:
-        print("=== Health Score Weight Sensitivity Analysis (v2 6-Component) ===")
-        print(f"Base Composite Score: {report['base_score']}")
+        print("=== Health Score Composite-Score Drift Analysis (Component Weight Volatility) ===")
+        print("Note: This evaluates composite-score drift under +/- weight perturbations for a given repository subscore profile.")
+        print("It does NOT measure cohort ranking stability across multiple repositories (which requires empirical cohort evaluation without fabricated data).")
+        print(f"\nBase Composite Score: {report['base_score']}")
         print(f"Subscores: {subscores}")
         print(f"Perturbation: +/-{report['perturbation_percent']:.0f}%\n")
-        print(f"{'Component':<18} {'Base Weight':<14} {'Max Drift':<12} {'Volatility Ranking'}")
+        print(f"{'Component':<18} {'Base Weight':<14} {'Max Drift':<12} {'Drift Ranking'}")
         print("-" * 65)
         for rank, item in enumerate(report["ranked_volatility"], 1):
             print(f"{item['component']:<18} {item['base_weight']:<14.2f} {item['max_drift']:<12.2f} #{rank}")
-        print("\nConclusion: The most volatile weights are those with the highest distance from other subscores.")
+        print("\nConclusion: Components whose subscores deviate most from the baseline composite score exhibit the highest drift under weight perturbation.")
 
 
 if __name__ == "__main__":
     main()
+

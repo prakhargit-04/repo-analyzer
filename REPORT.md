@@ -109,15 +109,48 @@ Formula issues identified during Part A forensics are pre-registered in `docs/S2
 
 ---
 
-## 6. Next-Session Gate & Evaluation Integrity Confirmation
+## 6. Session 25.2 — Evaluation Integrity Closures & Verification Gate
 
-All post-Session 25 evaluation integrity fixes have been applied and verified:
+All remaining evaluation integrity blockers have been resolved and verified via regression tests:
 
-| Verification Gate | Status | Criteria & Real Results |
-| :--- | :--- | :--- |
-| **Gate 1: CI Pipeline** | **PASSED** | Ubuntu backend, PostgreSQL 16 migrations/DB tests, Docker Compose smoke, Windows cache regressions, and Frontend audit/lint/types/build all pass green. |
-| **Gate 2: RAG False-Success Elimination** | **CONFIRMED** | `eval/rag/eval_rag.py` dry-run mode strictly outputs `NOT RUN (DRY RUN / MOCK ONLY)` with `None` for citation precision and recall. No fake 100% metrics are fabricated. |
-| **Gate 3: Graph Precision & Recall Integrity** | **CONFIRMED** | `eval/graph/metrics.py` reports `recall = None` when no ground-truth negative (`FN`) markers exist, eliminating misleading 100% recall claims. Conservative precision is reported alongside standard precision. Full label review quorum is enforced for `VALIDATED` status. |
-| **Gate 4: Health Score Sensitivity & Correlation** | **CONFIRMED** | `eval/health/sensitivity.py` evaluates all 6 canonical Health Score v2 components (`complexity`, `maintainability`, `security`, `sast`, `secrets`, `vulnerabilities`). `eval/health/correlation.py` enforces $n \ge 15$ pre-registered review quorum. |
-| **Gate 5: Benchmark SHAs & Question Dataset** | **CONFIRMED** | Pinned SHAs across all benchmark repositories verified. All 30 questions in `eval/questions.json` (20 answerable + 10 negative probes) verified for ID uniqueness, expected file references, and line range schemas. |
-| **Gate 6: Readiness for Session 26** | **READY** | All harnesses are clean, deterministic, and fail-closed. Ready for human annotation labeling and live LLM provider activation. |
+### 1. RAG Evaluation False-Completion Guard (`eval/rag/eval_rag.py`)
+- **Status:** **CLOSED / VERIFIED**
+- Real mode now connects to the production pipeline (`answer_repository_question`) and searches for indexed repository analysis runs in the database.
+- If an API key is present but analysis runs are missing or the database is unavailable, the evaluation fails closed with `status: "BLOCKED"` and all accuracy metrics set to `None`. An API key alone **cannot** produce a false `COMPLETED` status.
+- When no API key is present, it returns `status: "NOT RUN"` with metrics `None`.
+- Dry-run mode is strictly marked as `status: "NOT RUN (DRY RUN / MOCK ONLY)"` with accuracy metrics `None`.
+- Regression tests added in `tests/test_s25_eval_rag_integrity.py` (4 tests passing).
+
+### 2. Health Correlation Input Integrity (`eval/health/correlation.py`)
+- **Status:** **CLOSED / VERIFIED**
+- Completely eliminated the fabricated `algorithmic_score=50.0` fallback.
+- Enforces strict range validation (`1.0 <= human_rating <= 5.0`, `0.0 <= algorithmic_score <= 100.0`).
+- Blank human ratings are tallied as `unreviewed_count`.
+- Missing, blank, or non-numeric algorithmic scores, as well as out-of-range values, are excluded and tallied in `excluded_count`.
+- Enforces pre-registered quorum: `is_fully_validated` is only true if $\ge 15$ valid paired ratings exist, with zero unreviewed and zero excluded rows.
+- Regression tests added in `tests/test_health_eval_correlation.py` covering missing scores, blank scores, out-of-range ratings, constant scores, and sample counts $<15$ (10 tests passing).
+
+### 3. Benchmark Candidate List Repaired (`eval/health/rating_sheet.py`, `eval/health/CANDIDATES.md`)
+- **Status:** **CLOSED / VERIFIED**
+- Replaced dead/placeholder URLs (such as `OWASP/BenchmarkUtils`) with the official `OWASP-Benchmark/BenchmarkJava`.
+- Pinned and verified real, accessible full 40-character commit SHAs across all 15 repositories using `git ls-remote`.
+- Saved reproducible verification evidence to `docs/s25_evidence/candidate_sha_verification.txt`.
+- Stripped all quality hints (e.g. `(High)`, `(Medium)`, `(Low)`) from the reviewer-facing candidate list and CSV to preserve double-blind integrity.
+- Regenerated `eval/health/rating_sheet.csv`.
+
+### 4. Sensitivity Analysis Clarified (`eval/health/sensitivity.py`)
+- **Status:** **CLOSED / VERIFIED**
+- Formally labeled output as **Composite-Score Drift Analysis (Component Weight Volatility)**.
+- Clarified in output headers and documentation that it analyzes single-profile composite drift and does NOT measure cohort ranking stability across multiple repositories.
+- Production weights (`DEFAULT_WEIGHTS_V2`) remain untouched.
+
+### Summary Verification Status Table
+
+| Area | Code / Harness Status | Empirical Evaluation Status | Notes |
+| :--- | :--- | :--- | :--- |
+| **RAG Evaluation** | **PASSED** (Harness hardened & guarded) | **NOT RUN** (Pending live LLM provider keys & indexed runs) | Fails closed with `BLOCKED`/`NOT RUN` |
+| **Health Correlation** | **PASSED** (Input integrity & quorum enforced) | **NOT RUN** (Pending human blind ratings) | $n=0$ reviewed, requires $n \ge 15$ |
+| **Benchmark Candidates** | **PASSED** (All 15 SHAs verified via `git ls-remote`) | **N/A** (Dataset definition complete) | Evidence in `docs/s25_evidence/candidate_sha_verification.txt` |
+| **Sensitivity Analysis** | **PASSED** (Explicitly labeled as composite drift) | **N/A** (Deterministic analysis) | Production weights preserved |
+| **Graph Precision/Recall** | **PASSED** (Recall None without FN markers; Wilson CI) | **NOT RUN** (Pending human edge labels) | Double-blind sample sheets ready |
+
