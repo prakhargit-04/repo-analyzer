@@ -109,22 +109,29 @@ Formula issues identified during Part A forensics are pre-registered in `docs/S2
 
 ---
 
-## 6. Session 25.2 & 25.3 — Evaluation Integrity Closures & Verification Gate
+## 6. Session 25.2, 25.3 & 25.4 — Evaluation Integrity Closures & Verification Gate
 
-All remaining evaluation integrity blockers have been resolved and verified via regression tests:
+All evaluation integrity blockers and budget safety mechanisms have been resolved and verified via regression tests:
 
-### 1. RAG Completion Status & Coverage Tracking (`eval/rag/eval_rag.py`)
+### 1. RAG Completion Status & Response Integrity (`eval/rag/eval_rag.py`)
 - **Status:** **CLOSED / VERIFIED**
 - Separate tracking for `attempted_count`, `success_count`, `failed_count`, `skipped_count`, and `execution_coverage_percent`.
-- Fails closed: never reports `COMPLETED` if any question fails or is skipped. Uses distinct `PARTIAL` status for mixed results, `FAILED` if all attempted fail, and `BLOCKED` if no questions can be attempted.
-- Regression tests in `tests/test_s25_eval_rag_integrity.py` verify 1 success + 1 failure (`PARTIAL`), all failures (`FAILED`), and full success (`COMPLETED`).
+- Strict response validation: responses from `answer_repository_question` must be dictionaries with a non-empty, non-whitespace string in `answer` and a list in `citations`. Malformed or empty responses fail closed, incrementing `failed_count`.
+- Fails closed: never reports `COMPLETED` if any question fails, is malformed, or is skipped. Uses distinct `PARTIAL` status for mixed results, `FAILED` if all attempted fail, and `BLOCKED` if execution cannot proceed.
+- Regression tests in `tests/test_s25_eval_rag_integrity.py` verify 1 success + 1 failure (`PARTIAL`), all failures (`FAILED`), full success (`COMPLETED`), and malformed/empty responses treated as failures.
 
-### 2. RAG Monetary Budget & Token Accounting (`eval/rag/eval_rag.py`)
+### 2. RAG Monetary Budget Gate & Accounting (`eval/rag/eval_rag.py`)
 - **Status:** **CLOSED / VERIFIED**
-- Removed the misleading live `cost_estimate_usd: 0.0`.
-- Implemented real token accounting and cost tracking using pricing models ($0.00015/1k input, $0.00060/1k output tokens).
-- Pre-request budget gate: checks whether `accumulated_cost_usd + next_query_est > max_budget_usd` ($1.00 max cap) before dispatching any request. If the cap is reached, halts further requests, flags `budget_exhausted: True`, and marks remaining questions as skipped.
-- Regression test `test_rag_budget_exhaustion_stops_requests` proves that no additional requests occur after budget exhaustion.
+- **Dual Budget Gate**:
+  - **Pre-request estimation**: Checks whether `accumulated_cost_usd + single_query_est_cost > max_budget_usd` ($1.00 max cap) before dispatching any request, halting queries that would foreseeably exceed the budget.
+  - **Post-request actual halt**: If actual usage on an executed query causes `accumulated_cost_usd >= max_budget_usd`, execution halts immediately without issuing any subsequent requests, marking `budget_exceeded: True` and `budget_exhausted: True`.
+- **Honest Cost Basis**:
+  - Distinguishes `actual` provider token usage from `estimated` token usage (word-count heuristics).
+  - Resolves model-specific pricing (e.g. `gpt-4o-mini`, `gpt-4o`, `gemini-1.5-flash`, `gemini-1.5-pro`).
+  - `budget_verified` is strictly `False` unless actual provider token metadata was returned for all executed queries and model pricing was exact.
+- **Guarantee vs. Limitation Boundary**:
+  - *Guarantee*: Pre-request estimation prevents issuing foreseeable over-budget requests, and post-request accounting strictly prevents issuing any further requests once the budget cap is reached.
+  - *Limitation*: A single in-flight query's actual output length is bounded by the LLM's `max_tokens` configuration, meaning pre-request estimates cannot guarantee a sub-cent monetary cap if actual LLM response length exceeds the conservative estimate.
 
 ### 3. Blind Rating Integration & Deterministic Join (`eval/health/rating_sheet.py`, `eval/health/correlation.py`)
 - **Status:** **CLOSED / VERIFIED**
@@ -155,10 +162,11 @@ All remaining evaluation integrity blockers have been resolved and verified via 
 
 | Area | Code / Harness Status | Empirical Evaluation Status | Notes |
 | :--- | :--- | :--- | :--- |
-| **RAG Evaluation** | **PASSED** (Coverage tracking & $1.00 budget gate verified) | **NOT RUN** (Pending live LLM provider keys & indexed runs) | Fails closed with `BLOCKED`/`NOT RUN`/`PARTIAL` |
+| **RAG Evaluation** | **PASSED** (Response validation & dual budget gate verified) | **NOT RUN** (Pending live LLM provider keys & indexed runs) | Fails closed with `BLOCKED`/`NOT RUN`/`PARTIAL` |
 | **Health Correlation** | **PASSED** (Blind sheet, deterministic join & quorum enforced) | **NOT RUN** (Pending human blind ratings) | $n=0$ reviewed, requires $n \ge 15$ |
 | **Benchmark Candidates** | **PASSED** (All 15 SHAs verified via `git ls-remote`) | **N/A** (Dataset definition complete) | Evidence in `docs/s25_evidence/candidate_sha_verification.txt` |
 | **Sensitivity Analysis** | **PASSED** (Explicitly labeled as composite drift) | **N/A** (Deterministic analysis) | Production weights preserved |
 | **Graph Precision/Recall** | **PASSED** (Recall None without FN markers; Wilson CI) | **NOT RUN** (Pending human edge labels) | Double-blind sample sheets ready |
+
 
 

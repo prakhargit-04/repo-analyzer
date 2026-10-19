@@ -313,3 +313,174 @@ def test_rag_budget_exhaustion_stops_requests(monkeypatch, tmp_path):
         assert result["skipped_count"] >= 3
         assert result["status"] == "PARTIAL"
 
+
+def test_rag_actual_cost_exceeds_budget_halts_subsequent_requests(monkeypatch, tmp_path):
+    """
+    Regression test: When a query's actual provider token usage exceeds the remaining budget,
+    all subsequent requests are stopped immediately, remaining questions are skipped,
+    and both budget_exceeded and budget_exhausted are marked True.
+    """
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-mock-key")
+    monkeypatch.setenv("OPENAI_MODEL_NAME", "gpt-4o-mini")
+
+    import json
+    q_file = tmp_path / "questions_overbudget.json"
+    q_file.write_text(json.dumps([
+        {"id": f"q{i}", "repo": "iniconfig", "question": f"Question {i}?", "is_answerable": True, "expected_files": []}
+        for i in range(3)
+    ]), encoding="utf-8")
+
+    mock_session = MagicMock()
+    call_count = 0
+
+    def mock_answer(session, run_id, question, top_k):
+        nonlocal call_count
+        call_count += 1
+        # 150k prompt tokens ($0.0225) + 50k completion tokens ($0.030) = $0.0525
+        return {
+            "answer": "Detailed answer from pipeline",
+            "citations": [],
+            "llm_model": "gpt-4o-mini",
+            "usage": {"prompt_tokens": 150000, "completion_tokens": 50000},
+        }
+
+    with patch("rag.service.answer_repository_question", side_effect=mock_answer):
+        # Budget cap is $0.05: after 1st question ($0.0525), budget is exceeded
+        result = evaluate_rag(
+            questions_path=str(q_file),
+            dry_run=False,
+            output_report=None,
+            db_session=mock_session,
+            repo_run_map={"iniconfig": "run-test-123"},
+            max_budget_usd=0.05,
+        )
+
+        assert call_count == 1  # stopped immediately, question 2 and 3 not called
+        assert result["budget_exceeded"] is True
+        assert result["budget_exhausted"] is True
+        assert result["attempted_count"] == 1
+        assert result["success_count"] == 1
+        assert result["skipped_count"] == 2
+        assert result["status"] == "PARTIAL"
+        assert result["cost_basis"] == "actual"
+        assert result["budget_verified"] is True
+        assert result["cost_usd"] >= 0.05
+
+
+def test_rag_unavailable_token_usage_metadata_marked_estimated(monkeypatch, tmp_path):
+    """
+    Regression test: When provider usage metadata is unavailable, cost_basis must be
+    'estimated' and budget_verified must be False (never claimed True).
+    """
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-mock-key")
+
+    import json
+    q_file = tmp_path / "questions_no_usage.json"
+    q_file.write_text(json.dumps([
+        {"id": "q1", "repo": "iniconfig", "question": "Question 1?", "is_answerable": True, "expected_files": []}
+    ]), encoding="utf-8")
+
+    mock_session = MagicMock()
+
+    # Response has no usage metadata
+    def mock_answer(session, run_id, question, top_k):
+        return {"answer": "Answer without usage tokens", "citations": []}
+
+    with patch("rag.service.answer_repository_question", side_effect=mock_answer):
+        result = evaluate_rag(
+            questions_path=str(q_file),
+            dry_run=False,
+            output_report=None,
+            db_session=mock_session,
+            repo_run_map={"iniconfig": "run-test-123"},
+        )
+
+        assert result["status"] == "COMPLETED"
+        assert result["cost_basis"] == "estimated"
+        assert result["budget_verified"] is False
+        assert result["actual_usage_queries_count"] == 0
+        assert result["estimated_usage_queries_count"] == 1
+        assert result["cost_usd"] is not None
+        assert result["cost_usd"] > 0.0
+
+
+def test_rag_malformed_and_empty_responses_treated_as_failures(monkeypatch, tmp_path):
+    """
+    Regression test: Pipeline returning non-dict, missing answer, or empty/whitespace answer
+    must be treated as failure, incrementing failed_count and yielding PARTIAL or FAILED.
+    """
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-mock-key")
+
+    import json
+    q_file = tmp_path / "questions_malformed.json"
+    q_file.write_text(json.dumps([
+        {"id": "q1", "repo": "iniconfig", "question": "Q1?", "is_answerable": True, "expected_files": []},
+        {"id": "q2", "repo": "iniconfig", "question": "Q2?", "is_answerable": True, "expected_files": []},
+        {"id": "q3", "repo": "iniconfig", "question": "Q3?", "is_answerable": True, "expected_files": []},
+    ]), encoding="utf-8")
+
+    mock_session = MagicMock()
+    call_idx = 0
+
+    def mock_answer(session, run_id, question, top_k):
+        nonlocal call_idx
+        call_idx += 1
+        if call_idx == 1:
+            return "not-a-dict-string"  # Malformed: non-dict
+        elif call_idx == 2:
+            return {"answer": "   ", "citations": []}  # Malformed: whitespace only
+        else:
+            return {"answer": "Valid non-empty answer", "citations": []}  # Valid
+
+    with patch("rag.service.answer_repository_question", side_effect=mock_answer):
+        result = evaluate_rag(
+            questions_path=str(q_file),
+            dry_run=False,
+            output_report=None,
+            db_session=mock_session,
+            repo_run_map={"iniconfig": "run-test-123"},
+        )
+
+        assert result["attempted_count"] == 3
+        assert result["failed_count"] == 2
+        assert result["success_count"] == 1
+        assert result["status"] == "PARTIAL"
+        assert result["execution_coverage_percent"] == 33.3
+
+
+def test_rag_all_malformed_responses_yields_failed(monkeypatch, tmp_path):
+    """
+    Regression test: When all responses from pipeline are malformed or empty,
+    status must be FAILED with 0% coverage.
+    """
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-mock-key")
+
+    import json
+    q_file = tmp_path / "questions_all_malformed.json"
+    q_file.write_text(json.dumps([
+        {"id": "q1", "repo": "iniconfig", "question": "Q1?", "is_answerable": True, "expected_files": []},
+        {"id": "q2", "repo": "iniconfig", "question": "Q2?", "is_answerable": True, "expected_files": []},
+    ]), encoding="utf-8")
+
+    mock_session = MagicMock()
+
+    # Returns dict missing answer
+    def mock_answer(session, run_id, question, top_k):
+        return {"citations": []}
+
+    with patch("rag.service.answer_repository_question", side_effect=mock_answer):
+        result = evaluate_rag(
+            questions_path=str(q_file),
+            dry_run=False,
+            output_report=None,
+            db_session=mock_session,
+            repo_run_map={"iniconfig": "run-test-123"},
+        )
+
+        assert result["attempted_count"] == 2
+        assert result["failed_count"] == 2
+        assert result["success_count"] == 0
+        assert result["status"] == "FAILED"
+        assert result["execution_coverage_percent"] == 0.0
+
+

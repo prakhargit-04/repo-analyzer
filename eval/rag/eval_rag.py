@@ -32,9 +32,30 @@ for p in [str(REPO_ROOT), str(PIPELINE_DIR)]:
 MAX_BUDGET_QUERIES = 30
 MAX_BUDGET_USD = 1.00
 
-# Estimated cost per 1k tokens for standard LLMs (e.g., gpt-4o-mini / gemini-1.5-flash)
-INPUT_COST_PER_1K = 0.00015
-OUTPUT_COST_PER_1K = 0.00060
+# Known provider/model pricing per 1,000 tokens (USD): (input_cost_per_1k, output_cost_per_1k)
+MODEL_PRICING: dict[str, tuple[float, float]] = {
+    "gpt-4o-mini": (0.00015, 0.00060),
+    "gpt-4o": (0.00250, 0.01000),
+    "gemini-1.5-flash": (0.000075, 0.00030),
+    "gemini-1.5-pro": (0.00125, 0.00500),
+    "test-deterministic-rag": (0.00015, 0.00060),
+}
+DEFAULT_FALLBACK_PRICING = (0.00015, 0.00060)
+
+
+def resolve_model_pricing(model_name: Optional[str] = None) -> tuple[float, float, bool]:
+    """
+    Resolves input and output token pricing per 1,000 tokens for the configured model.
+    Returns:
+        (input_cost_per_1k, output_cost_per_1k, is_exact_known_pricing)
+    """
+    if model_name:
+        lower = model_name.lower().strip()
+        for k, v in MODEL_PRICING.items():
+            if k in lower:
+                return v[0], v[1], True
+    return DEFAULT_FALLBACK_PRICING[0], DEFAULT_FALLBACK_PRICING[1], False
+
 
 UNANSWERABLE_REFUSAL_PATTERNS = [
     r"not found",
@@ -73,13 +94,17 @@ def evaluate_rag(
        Synthetic or mock numbers are NEVER reported as verified AI accuracy metrics.
     3. If an API key is present:
        - Must call the real production retrieval and answer-generation pipeline.
+       - Validates response integrity: response must be a dict with non-empty 'answer' string.
        - If production database session or indexed analysis runs are unavailable, returns
          status 'BLOCKED' with metrics None. An API key alone NEVER produces status 'COMPLETED'.
        - Tracks attempted, successful, and failed questions separately.
        - Does NOT report 'COMPLETED' if any required question failed or was skipped. Uses
          distinct 'PARTIAL' or 'FAILED' status.
-       - Enforces monetary budget cap (default $1.00) and max 30 questions before making
-         additional requests. Halts if budget cap is exhausted.
+       - Enforces monetary budget cap (default $1.00) and max 30 questions:
+         - Pre-request estimate guards against starting queries that exceed the cap.
+         - Post-request actual usage stops all subsequent queries if accumulated cost exceeds cap.
+       - Clearly reports cost basis ('actual', 'estimated', or 'unavailable') and never claims
+         budget_verified=True unless actual provider usage metadata and exact model pricing were present.
     """
     api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("GEMINI_API_KEY")
     if not api_key and not dry_run:
@@ -108,8 +133,15 @@ def evaluate_rag(
             "citation_precision": None,
             "citation_recall": None,
             "hallucination_rate_on_unanswerable": None,
+            "cost_usd": None,
             "cost_estimate_usd": None,
+            "cost_basis": "unavailable",
             "budget_verified": False,
+            "budget_cap_usd": max_budget_usd,
+            "budget_exhausted": False,
+            "budget_exceeded": False,
+            "actual_usage_queries_count": 0,
+            "estimated_usage_queries_count": 0,
         }
 
     # Load questions (pinned budget maximum 30 questions)
@@ -132,8 +164,11 @@ def evaluate_rag(
     failed_count = 0
     skipped_count = 0
     accumulated_cost_usd = 0.0
+    actual_usage_count = 0
+    estimated_usage_count = 0
+    all_pricing_exact = True
     budget_exhausted = False
-    budget_verified = True
+    budget_exceeded = False
 
     if dry_run:
         print(f"Evaluating RAG harness in dry-run mode across {total_questions} questions...")
@@ -146,7 +181,7 @@ def evaluate_rag(
             total_input_tokens += len(q_text.split()) * 4
             total_output_tokens += 50
 
-        cost_est = (total_input_tokens / 1000.0 * INPUT_COST_PER_1K) + (total_output_tokens / 1000.0 * OUTPUT_COST_PER_1K)
+        cost_est = (total_input_tokens / 1000.0 * DEFAULT_FALLBACK_PRICING[0]) + (total_output_tokens / 1000.0 * DEFAULT_FALLBACK_PRICING[1])
         p50_lat = median(latencies) if latencies else 0.0
         p95_lat = quantiles(latencies, n=20)[18] if len(latencies) >= 20 else (max(latencies) if latencies else 0.0)
 
@@ -165,10 +200,15 @@ def evaluate_rag(
             "hallucination_rate_on_unanswerable": None,
             "latency_p50_ms": round(p50_lat, 2),
             "latency_p95_ms": round(p95_lat, 2),
+            "cost_usd": round(cost_est, 6),
             "cost_estimate_usd": round(cost_est, 6),
-            "budget_verified": True,
+            "cost_basis": "estimated",
+            "budget_verified": False,
             "budget_cap_usd": max_budget_usd,
             "budget_exhausted": False,
+            "budget_exceeded": False,
+            "actual_usage_queries_count": 0,
+            "estimated_usage_queries_count": total_questions,
         }
 
         if output_report:
@@ -188,7 +228,7 @@ def evaluate_rag(
                 f.write("| **Hallucination Rate (Unanswerable)** | N/A (Dry run - unvalidated) |\n")
                 f.write(f"| **Latency p50** | {report['latency_p50_ms']} ms |\n")
                 f.write(f"| **Latency p95** | {report['latency_p95_ms']} ms |\n")
-                f.write(f"| **Estimated Token Cost** | ${report['cost_estimate_usd']:.6f} |\n")
+                f.write(f"| **Estimated Cost** | ${report['cost_usd']:.6f} (basis: {report['cost_basis']}) |\n")
 
         return report
 
@@ -216,8 +256,15 @@ def evaluate_rag(
                 "citation_precision": None,
                 "citation_recall": None,
                 "hallucination_rate_on_unanswerable": None,
+                "cost_usd": None,
                 "cost_estimate_usd": None,
+                "cost_basis": "unavailable",
                 "budget_verified": False,
+                "budget_cap_usd": max_budget_usd,
+                "budget_exhausted": False,
+                "budget_exceeded": False,
+                "actual_usage_queries_count": 0,
+                "estimated_usage_queries_count": 0,
             }
 
     # Resolve active run_ids for the evaluation repositories
@@ -261,15 +308,24 @@ def evaluate_rag(
             "citation_precision": None,
             "citation_recall": None,
             "hallucination_rate_on_unanswerable": None,
+            "cost_usd": None,
             "cost_estimate_usd": None,
+            "cost_basis": "unavailable",
             "budget_verified": False,
+            "budget_cap_usd": max_budget_usd,
+            "budget_exhausted": False,
+            "budget_exceeded": False,
+            "actual_usage_queries_count": 0,
+            "estimated_usage_queries_count": 0,
         }
 
     print(f"Executing genuine RAG evaluation across {total_questions} questions using real pipeline...")
 
-    # Single-query conservative token estimate for budget guarding
-    # ~1200 prompt tokens (system + context) and ~250 output tokens
-    single_query_est_cost = (1200 / 1000.0 * INPUT_COST_PER_1K) + (250 / 1000.0 * OUTPUT_COST_PER_1K)
+    # Determine default model pricing for pre-request estimation
+    configured_model = os.environ.get("OPENAI_MODEL_NAME") or os.environ.get("GEMINI_MODEL_NAME")
+    in_rate_est, out_rate_est, _ = resolve_model_pricing(configured_model)
+    # Pre-request conservative token estimate (~1,200 prompt, ~250 output)
+    single_query_est_cost = (1200 / 1000.0 * in_rate_est) + (250 / 1000.0 * out_rate_est)
 
     for q_idx, q in enumerate(questions):
         q_repo = q.get("repo")
@@ -278,9 +334,12 @@ def evaluate_rag(
             skipped_count += 1
             continue
 
-        # Enforce budget cap before issuing additional request
+        # Pre-request budget gate
         if accumulated_cost_usd + single_query_est_cost > max_budget_usd:
-            print(f"Budget cap reached: accumulated ${accumulated_cost_usd:.4f} + next query est ${single_query_est_cost:.4f} > ${max_budget_usd:.2f}. Halting further requests.")
+            print(
+                f"Budget cap reached: accumulated ${accumulated_cost_usd:.4f} + query est ${single_query_est_cost:.4f} "
+                f"> ${max_budget_usd:.2f}. Halting further requests."
+            )
             budget_exhausted = True
             skipped_count += (total_questions - q_idx)
             break
@@ -296,19 +355,56 @@ def evaluate_rag(
             duration_ms = (time.perf_counter() - start_time) * 1000
             latencies.append(duration_ms)
 
-            citations = resp.get("citations", []) if isinstance(resp, dict) else []
-            answer_text = resp.get("answer", "") if isinstance(resp, dict) else ""
+            # Response structure validation
+            if not isinstance(resp, dict):
+                raise ValueError(
+                    f"Malformed response from answer_repository_question: expected dict, got {type(resp).__name__}"
+                )
+
+            answer_text = resp.get("answer")
+            if not isinstance(answer_text, str) or not answer_text.strip():
+                raise ValueError(
+                    "Invalid response: 'answer' must be a non-empty, non-whitespace string"
+                )
+
+            citations = resp.get("citations", [])
+            if not isinstance(citations, list):
+                raise ValueError(
+                    f"Invalid response: 'citations' must be a list, got {type(citations).__name__}"
+                )
+
+            # Model pricing resolution for this response
+            resp_model = resp.get("llm_model") or configured_model
+            in_rate, out_rate, is_exact = resolve_model_pricing(resp_model)
+            if not is_exact:
+                all_pricing_exact = False
 
             # Token and cost accounting
-            usage = resp.get("usage") if isinstance(resp, dict) else None
-            if usage and isinstance(usage, dict) and "prompt_tokens" in usage and "completion_tokens" in usage:
-                in_tok = usage["prompt_tokens"]
-                out_tok = usage["completion_tokens"]
+            usage = resp.get("usage")
+            if (
+                isinstance(usage, dict)
+                and isinstance(usage.get("prompt_tokens"), (int, float))
+                and isinstance(usage.get("completion_tokens"), (int, float))
+            ):
+                in_tok = float(usage["prompt_tokens"])
+                out_tok = float(usage["completion_tokens"])
+                actual_usage_count += 1
             else:
-                in_tok = len(q_text.split()) * 4 + 800
-                out_tok = len(answer_text.split()) * 4
-            query_cost = (in_tok / 1000.0 * INPUT_COST_PER_1K) + (out_tok / 1000.0 * OUTPUT_COST_PER_1K)
+                in_tok = float(len(q_text.split()) * 4 + 800)
+                out_tok = float(len(answer_text.split()) * 4)
+                estimated_usage_count += 1
+
+            query_cost = (in_tok / 1000.0 * in_rate) + (out_tok / 1000.0 * out_rate)
             accumulated_cost_usd += query_cost
+
+            # Post-request budget check: if actual cost reaches/exceeds budget, stop immediately
+            if accumulated_cost_usd >= max_budget_usd:
+                print(
+                    f"Budget exceeded after question {q_idx + 1}: accumulated ${accumulated_cost_usd:.6f} "
+                    f">= max budget ${max_budget_usd:.2f}. Halting further requests immediately."
+                )
+                budget_exceeded = True
+                budget_exhausted = True
 
             if is_answerable:
                 if citations:
@@ -325,6 +421,10 @@ def evaluate_rag(
                     unanswerable_correct += 1
 
             success_count += 1
+
+            if budget_exceeded:
+                skipped_count += (total_questions - (q_idx + 1))
+                break
 
         except Exception as exc:
             print(f"Question {q.get('id')} execution error: {exc}")
@@ -348,6 +448,19 @@ def evaluate_rag(
     else:
         status_str = "BLOCKED"
         reason_str = "Execution could not complete"
+
+    # Cost basis and verification
+    if success_count > 0 and actual_usage_count == success_count and estimated_usage_count == 0 and all_pricing_exact:
+        cost_basis = "actual"
+        budget_verified = True
+    elif success_count > 0 or attempted_count > 0:
+        cost_basis = "estimated"
+        budget_verified = False
+    else:
+        cost_basis = "unavailable"
+        budget_verified = False
+
+    cost_val = round(accumulated_cost_usd, 6) if (success_count > 0 or attempted_count > 0) else None
 
     p50_lat = median(latencies) if latencies else 0.0
     p95_lat = quantiles(latencies, n=20)[18] if len(latencies) >= 20 else (max(latencies) if latencies else 0.0)
@@ -374,17 +487,24 @@ def evaluate_rag(
         "hallucination_rate_on_unanswerable": hallucination_rate,
         "latency_p50_ms": round(p50_lat, 2) if latencies else None,
         "latency_p95_ms": round(p95_lat, 2) if latencies else None,
-        "cost_estimate_usd": round(accumulated_cost_usd, 6) if budget_verified else None,
+        "cost_usd": cost_val,
+        "cost_estimate_usd": cost_val,
+        "cost_basis": cost_basis,
         "budget_verified": budget_verified,
         "budget_cap_usd": max_budget_usd,
         "budget_exhausted": budget_exhausted,
+        "budget_exceeded": budget_exceeded,
+        "actual_usage_queries_count": actual_usage_count,
+        "estimated_usage_queries_count": estimated_usage_count,
     }
 
     if output_report:
         os.makedirs(os.path.dirname(output_report), exist_ok=True)
         with open(output_report, "w", encoding="utf-8") as f:
-            f.write("# RAG Accuracy Evaluation Report (Session 25 Part E)\n\n")
+            f.write("# RAG Accuracy Evaluation Report (Session 25 Part E / 25.4)\n\n")
             f.write(f"**Status:** {report['status']} ({report['reason']})\n\n")
+            f.write("> [!NOTE]\n")
+            f.write("> Pre-request budget estimation uses conservative token approximations (~1,200 prompt, ~250 completion tokens). While it halts requests before expected budget breaches, pre-request estimates cannot guarantee a strict monetary cap when actual LLM response lengths or unseen context exceed estimates. If actual accumulated cost exceeds the budget cap during execution, all subsequent requests are immediately halted.\n\n")
             f.write("| Metric | Result |\n")
             f.write("| :--- | :--- |\n")
             f.write(f"| **Total Questions** | {report['total_questions']} |\n")
@@ -398,8 +518,11 @@ def evaluate_rag(
             f.write(f"| **Hallucination Rate (Unanswerable)** | {report['hallucination_rate_on_unanswerable']*100:.1f}% |\n" if report['hallucination_rate_on_unanswerable'] is not None else "| **Hallucination Rate (Unanswerable)** | N/A |\n")
             f.write(f"| **Latency p50** | {report['latency_p50_ms']} ms |\n" if report['latency_p50_ms'] is not None else "| **Latency p50** | N/A |\n")
             f.write(f"| **Latency p95** | {report['latency_p95_ms']} ms |\n" if report['latency_p95_ms'] is not None else "| **Latency p95** | N/A |\n")
-            f.write(f"| **Estimated Cost** | ${report['cost_estimate_usd']:.6f} |\n" if report['cost_estimate_usd'] is not None else "| **Estimated Cost** | N/A (unverified) |\n")
-            f.write(f"| **Budget Exhausted** | {report['budget_exhausted']} |\n")
+            f.write(f"| **Cost (USD)** | ${report['cost_usd']:.6f} (basis: {report['cost_basis']}) |\n" if report['cost_usd'] is not None else "| **Cost (USD)** | N/A (unavailable) |\n")
+            f.write(f"| **Budget Verified** | {report['budget_verified']} |\n")
+            f.write(f"| **Budget Cap (USD)** | ${report['budget_cap_usd']:.2f} |\n")
+            f.write(f"| **Budget Exhausted / Exceeded** | {report['budget_exhausted']} / {report['budget_exceeded']} |\n")
+            f.write(f"| **Actual vs. Estimated Usage Queries** | {report['actual_usage_queries_count']} actual / {report['estimated_usage_queries_count']} estimated |\n")
 
     return report
 
