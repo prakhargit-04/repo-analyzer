@@ -363,7 +363,7 @@ def test_rag_actual_cost_exceeds_budget_halts_subsequent_requests(monkeypatch, t
         assert result["skipped_count"] == 2
         assert result["status"] == "PARTIAL"
         assert result["cost_basis"] == "actual"
-        assert result["budget_verified"] is True
+        assert result["budget_verified"] is False
         assert result["cost_usd"] >= 0.05
 
 
@@ -484,3 +484,270 @@ def test_rag_all_malformed_responses_yields_failed(monkeypatch, tmp_path):
         assert result["execution_coverage_percent"] == 0.0
 
 
+def test_validate_usage_tokens_safe_validation():
+    """
+    Session 25.5 Regression test:
+    Directly validates that validate_usage_tokens accepts valid non-negative integers
+    and rejects booleans, negative numbers, floats/fractional values, NaN, infinity,
+    missing required fields, and non-dict objects.
+    """
+    from eval.rag.eval_rag import validate_usage_tokens
+
+    # Valid non-negative integers
+    assert validate_usage_tokens({"prompt_tokens": 100, "completion_tokens": 50}) == (100, 50)
+    assert validate_usage_tokens({"prompt_tokens": 0, "completion_tokens": 0}) == (0, 0)
+    assert validate_usage_tokens({"prompt_tokens": 1000, "completion_tokens": 0, "total_tokens": 1000}) == (1000, 0)
+
+    # Reject booleans (bool is a subclass of int in Python)
+    assert validate_usage_tokens({"prompt_tokens": True, "completion_tokens": 50}) is None
+    assert validate_usage_tokens({"prompt_tokens": 100, "completion_tokens": False}) is None
+    assert validate_usage_tokens({"prompt_tokens": True, "completion_tokens": False}) is None
+
+    # Reject negative integers
+    assert validate_usage_tokens({"prompt_tokens": -1, "completion_tokens": 50}) is None
+    assert validate_usage_tokens({"prompt_tokens": 100, "completion_tokens": -5}) is None
+
+    # Reject fractional and float values
+    assert validate_usage_tokens({"prompt_tokens": 10.5, "completion_tokens": 50}) is None
+    assert validate_usage_tokens({"prompt_tokens": 100, "completion_tokens": 20.0}) is None
+
+    # Reject NaN and infinity
+    assert validate_usage_tokens({"prompt_tokens": float("nan"), "completion_tokens": 50}) is None
+    assert validate_usage_tokens({"prompt_tokens": 100, "completion_tokens": float("inf")}) is None
+    assert validate_usage_tokens({"prompt_tokens": float("-inf"), "completion_tokens": 50}) is None
+
+    # Reject missing fields
+    assert validate_usage_tokens({"prompt_tokens": 100}) is None
+    assert validate_usage_tokens({"completion_tokens": 50}) is None
+    assert validate_usage_tokens({}) is None
+
+    # Reject malformed objects / non-dicts
+    assert validate_usage_tokens(None) is None
+    assert validate_usage_tokens("usage") is None
+    assert validate_usage_tokens([100, 50]) is None
+    assert validate_usage_tokens(42) is None
+
+
+def test_malformed_response_with_valid_usage_contributes_to_cost(monkeypatch, tmp_path):
+    """
+    Session 25.5 Regression test:
+    A malformed or empty response with valid usage metadata still contributes to recorded cost,
+    is classified as a failure, and preserves coverage semantics.
+    """
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-mock-key")
+
+    import json
+    q_file = tmp_path / "questions_empty_ans.json"
+    q_file.write_text(json.dumps([
+        {"id": "q1", "repo": "iniconfig", "question": "Question 1?", "is_answerable": True, "expected_files": []}
+    ]), encoding="utf-8")
+
+    mock_session = MagicMock()
+
+    # Empty answer text but valid provider usage metadata
+    def mock_answer(session, run_id, question, top_k):
+        return {
+            "answer": "   ",  # whitespace only -> malformed / invalid answer
+            "citations": [],
+            "llm_model": "gpt-4o-mini",
+            "usage": {"prompt_tokens": 1000, "completion_tokens": 500},
+        }
+
+    with patch("rag.service.answer_repository_question", side_effect=mock_answer):
+        result = evaluate_rag(
+            questions_path=str(q_file),
+            dry_run=False,
+            output_report=None,
+            db_session=mock_session,
+            repo_run_map={"iniconfig": "run-test-123"},
+        )
+
+        assert result["attempted_count"] == 1
+        assert result["failed_count"] == 1
+        assert result["success_count"] == 0
+        assert result["status"] == "FAILED"
+        assert result["execution_coverage_percent"] == 0.0
+
+        # Cost was recorded before answer validation failed
+        assert result["actual_usage_queries_count"] == 1
+        assert result["estimated_usage_queries_count"] == 0
+        assert result["has_unaccounted_cost"] is False
+        assert result["cost_basis"] == "actual"
+        assert result["cost_usd"] is not None
+        # 1000 * $0.00015/1k + 500 * $0.0006/1k = 0.00015 + 0.0003 = 0.00045
+        assert round(result["cost_usd"], 6) == 0.00045
+        # Actual cost was recorded and well within budget ($0.00045 <= $1.00)
+        assert result["budget_verified"] is True
+        assert result["budget_exceeded"] is False
+
+
+def test_usage_not_double_counted(monkeypatch, tmp_path):
+    """
+    Session 25.5 Regression test:
+    Ensures provider usage is counted exactly once per query and never double-counted.
+    """
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-mock-key")
+
+    import json
+    q_file = tmp_path / "questions_single.json"
+    q_file.write_text(json.dumps([
+        {"id": "q1", "repo": "iniconfig", "question": "Question 1?", "is_answerable": True, "expected_files": []}
+    ]), encoding="utf-8")
+
+    mock_session = MagicMock()
+
+    def mock_answer(session, run_id, question, top_k):
+        return {
+            "answer": "Valid complete answer with sufficient length to verify estimation would differ.",
+            "citations": [],
+            "llm_model": "gpt-4o-mini",
+            "usage": {"prompt_tokens": 1000, "completion_tokens": 500},
+        }
+
+    with patch("rag.service.answer_repository_question", side_effect=mock_answer):
+        result = evaluate_rag(
+            questions_path=str(q_file),
+            dry_run=False,
+            output_report=None,
+            db_session=mock_session,
+            repo_run_map={"iniconfig": "run-test-123"},
+        )
+
+        assert result["status"] == "COMPLETED"
+        assert result["actual_usage_queries_count"] == 1
+        assert result["estimated_usage_queries_count"] == 0
+        # Exactly 0.00045, not double (0.0009) or mixed with text estimate
+        assert round(result["cost_usd"], 6) == 0.00045
+        assert result["budget_verified"] is True
+        assert result["budget_exceeded"] is False
+
+
+def test_invalid_usage_metadata_rejected_and_falls_back_to_estimated(monkeypatch, tmp_path):
+    """
+    Session 25.5 Regression test:
+    When usage contains booleans or invalid types, it is rejected as actual usage,
+    falls back to estimated accounting, and cannot produce budget_verified=True.
+    """
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-mock-key")
+
+    import json
+    q_file = tmp_path / "questions_invalid_usage.json"
+    q_file.write_text(json.dumps([
+        {"id": "q1", "repo": "iniconfig", "question": "Question 1?", "is_answerable": True, "expected_files": []}
+    ]), encoding="utf-8")
+
+    mock_session = MagicMock()
+
+    # Returns boolean prompt_tokens
+    def mock_answer(session, run_id, question, top_k):
+        return {
+            "answer": "Valid answer text",
+            "citations": [],
+            "llm_model": "gpt-4o-mini",
+            "usage": {"prompt_tokens": True, "completion_tokens": 50},
+        }
+
+    with patch("rag.service.answer_repository_question", side_effect=mock_answer):
+        result = evaluate_rag(
+            questions_path=str(q_file),
+            dry_run=False,
+            output_report=None,
+            db_session=mock_session,
+            repo_run_map={"iniconfig": "run-test-123"},
+        )
+
+        assert result["status"] == "COMPLETED"
+        assert result["actual_usage_queries_count"] == 0
+        assert result["estimated_usage_queries_count"] == 1
+        assert result["cost_basis"] == "estimated"
+        assert result["budget_verified"] is False
+
+
+def test_failed_request_without_usage_tracks_unaccounted_cost(monkeypatch, tmp_path):
+    """
+    Session 25.5 Regression test:
+    When a request fails without usable usage metadata, has_unaccounted_cost is True,
+    and budget_verified is False.
+    """
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-mock-key")
+
+    import json
+    q_file = tmp_path / "questions_fail_no_usage.json"
+    q_file.write_text(json.dumps([
+        {"id": "q1", "repo": "iniconfig", "question": "Q1?", "is_answerable": True, "expected_files": []},
+        {"id": "q2", "repo": "iniconfig", "question": "Q2?", "is_answerable": True, "expected_files": []},
+    ]), encoding="utf-8")
+
+    mock_session = MagicMock()
+    call_idx = 0
+
+    def mock_answer(session, run_id, question, top_k):
+        nonlocal call_idx
+        call_idx += 1
+        if call_idx == 1:
+            return {
+                "answer": "Valid answer 1",
+                "citations": [],
+                "llm_model": "gpt-4o-mini",
+                "usage": {"prompt_tokens": 500, "completion_tokens": 100},
+            }
+        else:
+            raise RuntimeError("Provider connection reset without response")
+
+    with patch("rag.service.answer_repository_question", side_effect=mock_answer):
+        result = evaluate_rag(
+            questions_path=str(q_file),
+            dry_run=False,
+            output_report=None,
+            db_session=mock_session,
+            repo_run_map={"iniconfig": "run-test-123"},
+        )
+
+        assert result["attempted_count"] == 2
+        assert result["success_count"] == 1
+        assert result["failed_count"] == 1
+        assert result["status"] == "PARTIAL"
+        assert result["has_unaccounted_cost"] is True
+        assert result["budget_verified"] is False
+
+
+def test_pre_request_budget_exhaustion_halts_requests(monkeypatch, tmp_path):
+    """
+    Session 25.5 Regression test:
+    When the configured budget is smaller than the conservative pre-request estimate,
+    the pre-request budget check halts execution immediately before launching queries.
+    """
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-mock-key")
+
+    import json
+    q_file = tmp_path / "questions_prereq.json"
+    q_file.write_text(json.dumps([
+        {"id": "q1", "repo": "iniconfig", "question": "Q1?", "is_answerable": True, "expected_files": []},
+        {"id": "q2", "repo": "iniconfig", "question": "Q2?", "is_answerable": True, "expected_files": []},
+    ]), encoding="utf-8")
+
+    mock_session = MagicMock()
+    call_count = 0
+
+    def mock_answer(session, run_id, question, top_k):
+        nonlocal call_count
+        call_count += 1
+        return {"answer": "A", "citations": []}
+
+    with patch("rag.service.answer_repository_question", side_effect=mock_answer):
+        # max_budget_usd is $0.00001, far below conservative single_query_est_cost (~$0.0003)
+        result = evaluate_rag(
+            questions_path=str(q_file),
+            dry_run=False,
+            output_report=None,
+            db_session=mock_session,
+            repo_run_map={"iniconfig": "run-test-123"},
+            max_budget_usd=0.00001,
+        )
+
+        assert call_count == 0  # Pre-request gate prevented any calls
+        assert result["attempted_count"] == 0
+        assert result["skipped_count"] == 2
+        assert result["budget_exhausted"] is True
+        assert result["budget_verified"] is False
+        assert result["status"] == "BLOCKED"

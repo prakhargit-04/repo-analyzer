@@ -168,5 +168,65 @@ All evaluation integrity blockers and budget safety mechanisms have been resolve
 | **Sensitivity Analysis** | **PASSED** (Explicitly labeled as composite drift) | **N/A** (Deterministic analysis) | Production weights preserved |
 | **Graph Precision/Recall** | **PASSED** (Recall None without FN markers; Wilson CI) | **NOT RUN** (Pending human edge labels) | Double-blind sample sheets ready |
 
+---
 
+## 7. Session 25.5 — Final RAG Integrity Patch & Session 25 Closure
 
+Session 25.5 completes the final evaluation accounting fixes identified in the Session 25.4 audit. All evaluation thresholds, production health-score weights, and unrelated project code have been strictly preserved.
+
+### 1. Accounting and Validation Fixes (`eval/rag/eval_rag.py`)
+
+1. **Correct Budget-Verification Semantics**:
+   - Defined distinct evaluation dimensions:
+     - `cost_basis`: Whether recorded query costs use actual provider token usage and exact model pricing (`actual`), token heuristics/fallback pricing (`estimated`), or no data (`unavailable`).
+     - `budget_exceeded`: Whether accumulated query cost strictly exceeded the configured budget cap (`accumulated_cost_usd > max_budget_usd`).
+     - `budget_verified`: Whether the harness has sufficient evidence to assert that the configured budget was respected (`not budget_exceeded and cost_basis == "actual" and not has_unaccounted_cost and actual_usage_count > 0`).
+   - Invariant enforced: `budget_verified` is **never** `True` if `budget_exceeded` is `True`.
+   - Invariant enforced: Actual usage and known pricing support `cost_basis="actual"` even when the budget is exceeded.
+   - Invariant enforced: Estimated or incomplete accounting cannot claim `budget_verified=True`.
+2. **Account for Cost Before Validating Answer**:
+   - Provider token usage and cost are recorded **before** response structure or answer contents are validated.
+   - Malformed or empty answers (which raise validation errors) still contribute to recorded cost when provider usage metadata is returned.
+   - Usage is tracked once per query and never double-counted.
+   - If a request fails without usable usage metadata, `has_unaccounted_cost` is explicitly set to `True`, preventing false claims of complete accounting.
+3. **Safe Provider Usage Metadata Validation**:
+   - Added `validate_usage_tokens`: strictly validates `prompt_tokens` and `completion_tokens` as non-negative integers.
+   - Safely rejects booleans (e.g. `isinstance(True, int)` is True in Python), negative numbers, fractional/float values, `NaN`, infinity, missing fields, and non-dict objects.
+   - Invalid or missing metadata deterministically falls back to estimated accounting without crashing the evaluation.
+4. **Budget Halt Boundaries**:
+   - Pre-request conservative token estimation halts queries before predictable breaches.
+   - Post-request actual cost accounting immediately halts all subsequent requests once the budget cap is reached or exceeded.
+
+### 2. Empirical Verification & Test Results
+
+Executed the required verification suites:
+
+```bash
+# 1. Targeted Evaluation Suites (74 passed)
+python -m pytest tests/test_s25_eval_rag_integrity.py tests/test_health_eval_correlation.py tests/test_graph_eval_metrics.py tests/test_eval_metrics.py -q --tb=short
+# Result: 74 passed in 1.41s
+
+# 2. Retrieval Parity Suites (10 passed)
+python -m pytest tests/test_retrieval_parity.py tests/test_s20_embeddings_retrieval.py -q --tb=short
+# Result: 10 passed, 3 warnings in 8.18s
+
+# 3. Static Syntax & Code Hygiene (0 errors)
+python -m pyflakes eval/rag/eval_rag.py tests/test_s25_eval_rag_integrity.py
+# Result: Clean (code 0)
+
+# 4. Repository Hygiene Check
+python scripts/check_repo_hygiene.py
+# Result: [OK] REPOSITORY IS CLEAN! Zero forbidden artifacts found.
+```
+
+### 3. Transparent Evaluation Limitations
+
+The following limitations remain explicitly acknowledged:
+1. **Live RAG Accuracy Evaluation**: Not run against live LLM providers; requires setting `OPENAI_API_KEY` or `GEMINI_API_KEY` and running against indexed database analysis runs. All metrics are safely reported as `None` with status `NOT RUN` / `BLOCKED`.
+2. **Post-Request Budget Cap In-Flight Limitation**: Post-request budget checks halt subsequent queries once the budget cap is reached or exceeded; however, because LLM provider calls are in-flight during execution, a single query's response can exceed the remaining budget before post-request halting takes effect.
+3. **Health-Score Human Correlation**: Not completed ($n=0$ human reviews completed out of required $n \ge 15$). Double-blind rating sheet and deterministic join harness are verified and ready.
+4. **Graph Accuracy Evaluation**: Not completed; human review of ground-truth AST edges has not been conducted.
+
+### 4. Session 25 Final Closure
+
+Session 25 is now formally **COMPLETED and CLOSED**. All evaluation integrity blockers, RAG budget safety gates, double-blind rating sheets, candidate commit SHAs, and hygiene requirements are verified. No further Session 25 iterations or speculative feature work will be conducted.
