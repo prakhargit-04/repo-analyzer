@@ -182,7 +182,21 @@ def clone_repository(repo_url: str, dest_dir: str, commit_sha: str | None = None
 
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, Exception) as exc:
         if os.path.exists(dest_dir):
-            shutil.rmtree(dest_dir, ignore_errors=True)
+            import stat, time
+            def _handle_readonly(func, path, exc_info):
+                try:
+                    os.chmod(path, stat.S_IWRITE)
+                    func(path)
+                except Exception:
+                    pass
+            for _ in range(5):
+                try:
+                    shutil.rmtree(dest_dir, onerror=_handle_readonly)
+                except Exception:
+                    shutil.rmtree(dest_dir, ignore_errors=True)
+                if not os.path.exists(dest_dir):
+                    break
+                time.sleep(0.05)
         raise RuntimeError(
             f"Failed to clone repository '{_redact_url(repo_url)}': {_clone_failure_reason(exc)}"
         ) from None
